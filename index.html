@@ -1,17 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="utf-8" />
 <style>
+body {
+	word-break: break-all;
+}
 textarea.code {
-	width: 100%;
+	width: calc(100vw - 20px);
 	font-family: monospace;
-	height:100%;
+	height:calc(100vh - 100px);
+	margin: 1px;
 }
 select.compiler {
-	width: 100%;
+	width: calc(100vw - 20px);
+	padding: 1px;
+	margin: 1px;
 }
 input.options {
-	width: 100%;
+	width: calc(100vw - 20px);
+	padding: 1px;
+	margin: 1px;
 }
 .output {
 	font-family: monospace;
@@ -25,7 +34,7 @@ input.options {
 <select class="compiler">
 <option value="gsnapshot">x86-64 gcc (snapshot)</option>
 </select>
-<input class="options" value="-std=c++1z -Wall -pedantic" />
+<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always" />
 <button class="asm">assembly</button>
 <button class="stderr">stderr</button>
 <button class="stdout">stdout</button>
@@ -50,6 +59,44 @@ api.getCompilers().then(function (data) {
 		compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
 	}
 });
+var cache = [];
+function compile(object) {
+	let {compiler, source, options} = object;
+	let s = JSON.stringify(object);
+	for (let c of cache) {
+		if (c.input === s)
+			return Promise.resolve(c.output);
+	}
+	let t = api.compile(compiler, { source, options });
+	t.then(function (data) {
+		if (data.okToCache)
+			cache.push({ input: s, output: data });
+	});
+	return t;
+}
+function colorize(out) {
+	for (let line of out.children) {
+		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, function (m, p1, p2) {
+			let style = '';
+			for (let s of p1.split(';')) {
+				let i = +s;
+				if (i === 1)
+					style += 'font-weight:bold;';
+				else if (i === 31)
+					style += 'color:red;';
+				else if (i === 32)
+					style += 'color:green;';
+				else if (i === 34)
+					style += 'color:blue;';
+				else if (i === 35)
+					style = 'color:magenta;';
+				else if (i === 36)
+					style = 'color:darkcyan;';
+			}
+			return '<span style="'+style+'">'+p2+'</span>';
+		})
+	}
+}
 document.addEventListener('click', function (e) {
 	let button = e.target;
 	let controller = button.closest('.controller');
@@ -57,7 +104,7 @@ document.addEventListener('click', function (e) {
 	let source = document.querySelector('textarea').value;
 	let compiler = controller.querySelector('.compiler').selectedOptions[0].value;
 	let options = controller.querySelector('.options').value;
-	api.compile(compiler, { source, options }).then(function (data) {
+	compile({compiler, source, options }).then(function (data) {
 		let output = document.querySelector('.output');
 		let o = data.asm;
 		if (button.matches('.stderr')) {
@@ -69,6 +116,7 @@ document.addEventListener('click', function (e) {
 		for (let {text} of o) {
 			output.append(create('div', { innerText: text }));
 		}
+		colorize(output);
 	})
 })
 </script>
