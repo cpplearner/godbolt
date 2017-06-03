@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+textarea.code {
+	width: 100%;
+	font-family: monospace;
+	height:100%;
+}
+select.compiler {
+	width: 100%;
+}
+input.options {
+	width: 100%;
+}
+.output {
+	font-family: monospace;
+	white-space: pre-wrap;
+}
+</style>
+</head>
+<body>
+<textarea class="code"></textarea>
+<div class="controller">
+<select class="compiler">
+<option value="gsnapshot">x86-64 gcc (snapshot)</option>
+</select>
+<input class="options" value="-std=c++1z -Wall -pedantic" />
+<button class="asm">assembly</button>
+<button class="stderr">stderr</button>
+<button class="stdout">stdout</button>
+</div>
+<div class="output"></div>
+<script>
+function create(s, o) { return Object.assign(document.createElement(s), o); }
+var api = {
+	request: function (url, init) { return fetch('https://godbolt.org/api' + url, init).then(x => x.json()); },
+	getCompilers: function () { return this.request('/compilers', { headers: { 'Accept': 'application/json' }}); },
+	compile: function (id, {source = '', options = '', filters}) {
+			let body = JSON.stringify({source, options, filters});
+			let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+			return this.request('/compiler/' + id + '/compile', { method: 'post', headers, body });
+		},
+};
+api.getCompilers().then(function (data) {
+	let compiler = document.querySelector('.compiler');
+	let curid = compiler.selectedOptions[0].value;
+	compiler.innerText = '';
+	for (let {name, id} of data) {
+		compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
+	}
+});
+document.addEventListener('click', function (e) {
+	let button = e.target;
+	let controller = button.closest('.controller');
+	if (!button.matches('button') || !controller) return;
+	let source = document.querySelector('textarea').value;
+	let compiler = controller.querySelector('.compiler').selectedOptions[0].value;
+	let options = controller.querySelector('.options').value;
+	api.compile(compiler, { source, options }).then(function (data) {
+		let output = document.querySelector('.output');
+		let o = data.asm;
+		if (button.matches('.stderr')) {
+			o = data.stderr;
+		} else if (button.matches('.stdout')) {
+			o = data.stdout;
+		}
+		output.innerText = '';
+		for (let {text} of o) {
+			output.append(create('div', { innerText: text }));
+		}
+	})
+})
+</script>
+</body>
