@@ -4,29 +4,26 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1.0" />
 <style>
-body {
-	word-break: break-all;
-}
-textarea.code {
-	width: calc(100vw - 20px);
-	font-family: monospace;
+button, input, select { font-size: 16px; }
+.code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap; }
+.code {
+	width: calc(100vw - 40px);
 	height:calc(100vh - 100px);
 	margin: 1px;
 }
-select.compiler {
-	width: calc(100vw - 20px);
-	padding: 1px;
-	margin: 1px;
-}
+select.compiler,
 input.options {
-	width: calc(100vw - 20px);
+	width: calc(100vw - 40px);
 	padding: 1px;
 	margin: 1px;
 }
-.output {
-	font-family: monospace;
-	white-space: pre-wrap;
-}
+.output .bold { font-weight: bold; }
+.output .red { color: red; }
+.output .green { color: green; }
+.output .blue { color: blue; }
+.output .magenta { color: magenta; }
+.output .cyan { color: darkcyan; }
+.output .elided-path-fragment { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -36,89 +33,85 @@ input.options {
 <option value="gsnapshot">x86-64 gcc (snapshot)</option>
 </select>
 <input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always" />
-<button class="asm">assembly</button>
-<button class="stderr">stderr</button>
-<button class="stdout">stdout</button>
+<button class="asm" data-field="asm">assembly</button>
+<button class="stderr" data-field="stderr">stderr</button>
+<button class="stdout" data-field="stdout">stdout</button>
 </div>
 <div class="output"></div>
 <script>
-function create(s, o) { return Object.assign(document.createElement(s), o); }
-var api = {
-	request: function (url, init) { return fetch('https://godbolt.org/api' + url, init).then(x => x.json()); },
-	getCompilers: function () { return this.request('/compilers', { headers: { 'Accept': 'application/json' }}); },
-	compile: function (id, {source = '', options = '', filters}) {
-			let body = JSON.stringify({source, options, filters});
-			let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-			return this.request('/compiler/' + id + '/compile', { method: 'post', headers, body });
-		},
-};
-api.getCompilers().then(function (data) {
+let create = (s, o) => Object.assign(document.createElement(s), o);
+let request = (url, init) => fetch('https://godbolt.org/api'+url, init).then(x => x.json());
+let getCompilers = () => request('/compilers', { headers: { 'Accept': 'application/json' }});
+function compile(id, {source = '', options = '', filters}) {
+	let body = JSON.stringify({ source, options, filters });
+	let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
+}
+getCompilers().then(function (data) {
 	let compiler = document.querySelector('.compiler');
 	let curid = compiler.selectedOptions[0].value;
 	compiler.innerText = '';
-	for (let {name, id} of data) {
+	for (let {name, id} of data)
 		compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
-	}
 });
-var cache = [];
-function compile(object) {
-	let {compiler, source, options} = object;
-	let s = JSON.stringify(object);
-	for (let c of cache) {
-		if (c.input === s)
-			return Promise.resolve(c.output);
-	}
-	let t = api.compile(compiler, { source, options });
-	t.then(function (data) {
-		if (data.okToCache)
-			cache.push({ input: s, output: data });
-	});
-	return t;
-}
-function colorize(out) {
-	for (let line of out.children) {
-		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, function (m, p1, p2) {
-			let style = '';
-			for (let s of p1.split(';')) {
-				let i = +s;
-				if (i === 1)
-					style += 'font-weight:bold;';
-				else if (i === 31)
-					style += 'color:red;';
-				else if (i === 32)
-					style += 'color:green;';
-				else if (i === 34)
-					style += 'color:blue;';
-				else if (i === 35)
-					style = 'color:magenta;';
-				else if (i === 36)
-					style = 'color:darkcyan;';
-			}
-			return '<span style="'+style+'">'+p2+'</span>';
-		})
-	}
-}
+let pending_display = Promise.resolve();
+let output = document.querySelector('.output');
+let display = (data, attr) => pending_display.then(function () {
+	let o = data[attr];
+	output.innerText = '';
+	for (let {text} of o)
+		output.append(create('div', { innerText: text }));
+	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, o } });
+});
+let cache = [];
 document.addEventListener('click', function (e) {
 	let button = e.target;
 	let controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
-	let source = document.querySelector('textarea').value;
 	let compiler = controller.querySelector('.compiler').selectedOptions[0].value;
 	let options = controller.querySelector('.options').value;
-	compile({compiler, source, options }).then(function (data) {
-		let output = document.querySelector('.output');
-		let o = data.asm;
-		if (button.matches('.stderr')) {
-			o = data.stderr;
-		} else if (button.matches('.stdout')) {
-			o = data.stdout;
+	let source = document.querySelector('.code').value;
+	let s = JSON.stringify({ compiler, options, source });
+	for (let c of cache)
+		if (c.input === s) {
+			display(c.output, button.dataset.field);
+			return;
 		}
-		output.innerText = '';
-		for (let {text} of o) {
-			output.append(create('div', { innerText: text }));
-		}
-		colorize(output);
-	})
-})
+	compile(compiler, { source, options }).then(function (data) {
+		if (data.okToCache)
+			cache.push({ input: s, output: data });
+		display(data, button.dataset.field);
+	});
+});
+function colorize() {
+	for (let line of output.children)
+		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, function (m, p1, p2) {
+			const classmap = {
+				1: 'bold',
+				31: 'red',
+				32: 'green',
+				34: 'blue',
+				35: 'magenta',
+				36: 'darkcyan',
+			};
+			let classes = p1.split(';').map(x => classmap[+x]).join(' ');
+			return '<span class="'+classes+'">'+p2+'</span>';
+		});
+}
+output.addEventListener('content-changed', colorize);
+function shorten_filename() {
+	for (let line of output.children)
+		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, function (m) {
+			let span = create('span', { innerText: '.../', title: m, className: 'elided-path-fragment' });
+			return span.outerHTML;
+		});
+}
+output.addEventListener('content-changed', shorten_filename);
+output.addEventListener('click', function (e) {
+	let span = e.target;
+	if (!span || !span.classList.contains('elided-path-fragment')) return;
+	span.innerText = span.title;
+});
 </script>
 </body>
+</html>
