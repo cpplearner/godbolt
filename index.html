@@ -11,6 +11,8 @@ button, input, select { font-size: 16px; }
 	height:calc(100vh - 100px);
 	margin: 1px;
 }
+.container { width: 100%; overflow: auto; }
+.controller { display: table-cell; }
 select.compiler,
 input.options {
 	width: calc(100vw - 40px);
@@ -28,6 +30,7 @@ input.options {
 </head>
 <body>
 <textarea class="code"></textarea>
+<div class="container">
 <div class="controller">
 <select class="compiler">
 <option value="gsnapshot">x86-64 gcc (snapshot)</option>
@@ -36,6 +39,25 @@ input.options {
 <button class="asm" data-field="asm">assembly</button>
 <button class="stderr" data-field="stderr">stderr</button>
 <button class="stdout" data-field="stdout">stdout</button>
+</div>
+<div class="controller">
+<select class="compiler">
+<option value="clang_trunk">x86-64 clang (trunk)</option>
+</select>
+<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always -stdlib=libc++" />
+<button class="asm" data-field="asm">assembly</button>
+<button class="stderr" data-field="stderr">stderr</button>
+<button class="stdout" data-field="stdout">stdout</button>
+</div>
+<div class="controller">
+<select class="compiler">
+<option value="cl19_64">x86-64 CL 19 2017 RTW</option>
+</select>
+<input class="options" value="/EHsc /std:c++17 /permissive-" />
+<button class="asm" data-field="asm">assembly</button>
+<button class="stderr" data-field="stderr">stderr</button>
+<button class="stdout" data-field="stdout">stdout</button>
+</div>
 </div>
 <div class="output"></div>
 <script>
@@ -47,7 +69,7 @@ function compile(id, {source = '', options = '', filters}) {
 	let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
 }
-getCompilers().then(function (data) {
+getCompilers().then((data) => {
 	let compiler = document.querySelector('.compiler');
 	let curid = compiler.selectedOptions[0].value;
 	compiler.innerText = '';
@@ -56,18 +78,18 @@ getCompilers().then(function (data) {
 });
 let pending_display = Promise.resolve();
 let output = document.querySelector('.output');
-let display = (data, attr) => pending_display.then(function () {
+let display = (data, attr) => pending_display.then(() => {
 	let o = data[attr];
 	output.innerText = '';
 	for (let {text} of o)
 		output.append(create('div', { innerText: text }));
-	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, o } });
+	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, attr, o } });
 });
 let cache = [];
-document.addEventListener('click', function (e) {
+document.addEventListener('click', (e) => {
 	let button = e.target;
 	let controller = button.closest('.controller');
-	if (!button.matches('button') || !controller) return;
+	if (button.tagName !== 'BUTTON' || !controller) return;
 	let compiler = controller.querySelector('.compiler').selectedOptions[0].value;
 	let options = controller.querySelector('.options').value;
 	let source = document.querySelector('.code').value;
@@ -77,31 +99,34 @@ document.addEventListener('click', function (e) {
 			display(c.output, button.dataset.field);
 			return;
 		}
-	compile(compiler, { source, options }).then(function (data) {
+	compile(compiler, { source, options }).then((data) => {
 		if (data.okToCache)
 			cache.push({ input: s, output: data });
 		display(data, button.dataset.field);
 	});
 });
 function colorize() {
-	for (let line of output.children)
-		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, function (m, p1, p2) {
+	for (let line of output.children) {
+		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, (m, p1, p2) => {
 			const classmap = {
 				1: 'bold',
 				31: 'red',
 				32: 'green',
 				34: 'blue',
 				35: 'magenta',
-				36: 'darkcyan',
+				36: 'cyan',
 			};
 			let classes = p1.split(';').map(x => classmap[+x]).join(' ');
 			return '<span class="'+classes+'">'+p2+'</span>';
 		});
+		if (line.children.length === 1 && line.children[0].matches('.bold.green'))
+		    line.children[0].classList.remove('bold');
+	}
 }
 output.addEventListener('content-changed', colorize);
 function shorten_filename() {
 	for (let line of output.children)
-		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, function (m) {
+		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, (m) => {
 			let span = create('span', { innerText: '.../', title: m, className: 'elided-path-fragment' });
 			return span.outerHTML;
 		});
