@@ -11,7 +11,7 @@ button, input, select { font-size: 16px; }
 	height:calc(100vh - 100px);
 	margin: 1px;
 }
-.container { width: 100%; overflow: auto; }
+.container { width: calc(100vw - 40px); overflow: auto; }
 .controller { display: table-cell; }
 select.compiler,
 input.options {
@@ -53,7 +53,7 @@ input.options {
 <select class="compiler">
 <option value="cl19_64">x86-64 CL 19 2017 RTW</option>
 </select>
-<input class="options" value="/EHsc /std:c++17 /permissive-" />
+<input class="options" value="/EHsc /std:c++latest /permissive-" />
 <button class="asm" data-field="asm">assembly</button>
 <button class="stderr" data-field="stderr">stderr</button>
 <button class="stdout" data-field="stdout">stdout</button>
@@ -70,11 +70,12 @@ function compile(id, {source = '', options = '', filters}) {
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
 }
 getCompilers().then((data) => {
-	let compiler = document.querySelector('.compiler');
-	let curid = compiler.selectedOptions[0].value;
-	compiler.innerText = '';
-	for (let {name, id} of data)
-		compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
+	for (let compiler of document.querySelectorAll('.compiler')) {
+		let curid = compiler.selectedOptions[0].value;
+		compiler.innerText = '';
+		for (let {name, id} of data)
+			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
+	}
 });
 let pending_display = Promise.resolve();
 let output = document.querySelector('.output');
