@@ -26,7 +26,7 @@ input.options {
 .output .blue { color: blue; }
 .output .magenta { color: magenta; }
 .output .cyan { color: darkcyan; }
-.output .elided-path-fragment { cursor: pointer; }
+.output .toggle { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -129,15 +129,22 @@ output.addEventListener('content-changed', colorize);
 function shorten_filename() {
 	for (let line of output.children)
 		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, (m) => {
-			let span = create('span', { innerText: '.../', title: m, className: 'elided-path-fragment' });
+			let span = create('span', { innerText: '.../', title: m, className: 'toggle toggle-short' });
+			span.dataset.short = span.innerText;
 			return span.outerHTML;
 		});
 }
 output.addEventListener('content-changed', shorten_filename);
 output.addEventListener('click', function (e) {
 	let span = e.target;
-	if (!span || !span.classList.contains('elided-path-fragment')) return;
-	span.innerText = span.title;
+	if (!span || !span.classList.contains('toggle')) return;
+	if (span.classList.contains('toggle-short')) {
+		span.classList.replace('toggle-short', 'toggle-long');
+		span.innerText = span.title;
+	} else {
+		span.classList.replace('toggle-long', 'toggle-short');
+		span.innerText = span.dataset.short;
+	}
 });
 </script>
 </body>
