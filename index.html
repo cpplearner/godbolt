@@ -2,11 +2,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
-button, input, select { font-size: 16px; }
+button, label, input, select { font-size: 20px; }
 .code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap; }
-.code { width: calc(100vw - 42px); height:calc(100vh - 150px); margin: 1px; }
+.code { width: calc(100vw - 42px); height:calc(100vh - 200px); margin: 1px; }
 .container { width: calc(100vw - 35px); overflow: auto; }
 .controller { display: table-cell; }
+.controller label { white-space: nowrap; }
 select.compiler,
 input.options {
 	width: calc(100vw - 36px);
@@ -41,10 +42,12 @@ input.options {
 <label><input type="checkbox" name="intel" checked>intel</label>
 <label><input type="checkbox" name="commentOnly" checked>comments</label>
 <label><input type="checkbox" name="directives" checked>directives</label>
+<div>
 <button class="asm" data-field="asm">assembly</button>
 <button class="stderr" data-field="stderr">stderr</button>
 <button class="stdout" data-field="stdout">stdout</button>
 <button class="ast" data-field="ast">ast</button>
+</div>
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
