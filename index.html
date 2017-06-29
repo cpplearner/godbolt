@@ -1,16 +1,10 @@
 <!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
 button, input, select { font-size: 16px; }
 .code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap; }
-.code {
-	width: calc(100vw - 42px);
-	height:calc(100vh - 100px);
-	margin: 1px;
-}
+.code { width: calc(100vw - 42px); height:calc(100vh - 150px); margin: 1px; }
 .container { width: calc(100vw - 35px); overflow: auto; }
 .controller { display: table-cell; }
 select.compiler,
@@ -28,97 +22,89 @@ input.options {
 .output .cyan { color: darkcyan; }
 .output .toggle { cursor: pointer; }
 </style>
-</head>
-<body>
 <textarea class="code"></textarea>
 <div class="container">
-<div class="controller">
-<select class="compiler">
-<option value="gsnapshot">x86-64 gcc (snapshot)</option>
-</select>
-<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always" />
+<p class="controller">
+<select class="compiler"><option value="gsnapshot">x86-64 gcc (snapshot)</select>
+<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always">
+<p class="controller">
+<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
+<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always -fmodules -stdlib=libc++">
+<p class="controller">
+<select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
+<input class="options" value="/EHsc /std:c++latest /permissive-">
+</div>
+<output class="output"></output>
+<template id="filters">
+<label><input type="checkbox" name="binary">binary</label>
+<label><input type="checkbox" name="labels" checked>labels</label>
+<label><input type="checkbox" name="intel" checked>intel</label>
+<label><input type="checkbox" name="commentOnly" checked>comments</label>
+<label><input type="checkbox" name="directives" checked>directives</label>
 <button class="asm" data-field="asm">assembly</button>
 <button class="stderr" data-field="stderr">stderr</button>
 <button class="stdout" data-field="stdout">stdout</button>
-</div>
-<div class="controller">
-<select class="compiler">
-<option value="clang_trunk">x86-64 clang (trunk)</option>
-</select>
-<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always -stdlib=libc++" />
-<button class="asm" data-field="asm">assembly</button>
-<button class="stderr" data-field="stderr">stderr</button>
-<button class="stdout" data-field="stdout">stdout</button>
-</div>
-<div class="controller">
-<select class="compiler">
-<option value="cl19_64">x86-64 CL 19 2017 RTW</option>
-</select>
-<input class="options" value="/EHsc /std:c++latest /permissive-" />
-<button class="asm" data-field="asm">assembly</button>
-<button class="stderr" data-field="stderr">stderr</button>
-<button class="stdout" data-field="stdout">stdout</button>
-</div>
-</div>
-<div class="output"></div>
+<button class="ast" data-field="ast">ast</button>
+</template>
 <script>
-let create = (s, o) => Object.assign(document.createElement(s), o);
+let create = (tag, props) => Object.assign(document.createElement(tag), props);
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init).then(x => x.json());
 let getCompilers = () => request('/compilers', { headers: { 'Accept': 'application/json' }});
 function compile(id, {source = '', options = '', filters}) {
-	let body = JSON.stringify({ source, options, filters });
-	let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+	const body = JSON.stringify({ source, options, filters, backendOptions: { produceAst: true } });
+	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
 }
+for (let controller of document.querySelectorAll('.controller'))
+	controller.append(document.querySelector('template#filters').content.cloneNode(true));
 getCompilers().then((data) => {
-	for (let compiler of document.querySelectorAll('.compiler')) {
-		let curid = compiler.selectedOptions[0].value;
+	for (const compiler of document.querySelectorAll('.compiler')) {
+		const curid = compiler.selectedOptions[0].value;
 		compiler.innerText = '';
-		for (let {name, id} of data)
+		for (const {name, id} of data)
 			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
 	}
 });
-let pending_display = Promise.resolve();
 let output = document.querySelector('.output');
-let display = (data, attr) => pending_display.then(() => {
-	let o = data[attr];
+function display(data, attr) {
 	output.innerText = '';
-	for (let {text} of o)
-		output.append(create('div', { innerText: text }));
-	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, attr, o } });
-});
-let cache = [];
+	if (attr === 'ast')
+		output.append(create('div', { innerText: data.astOutput }));
+	else {
+		for (const {text} of data[attr])
+			output.append(create('div', { innerText: text }));
+	}
+	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, attr } });
+};
+let cache = {};
 document.addEventListener('click', (e) => {
-	let button = e.target;
-	let controller = button.closest('.controller');
-	if (button.tagName !== 'BUTTON' || !controller) return;
-	let compiler = controller.querySelector('.compiler').selectedOptions[0].value;
-	let options = controller.querySelector('.options').value;
-	let source = document.querySelector('.code').value;
-	let s = JSON.stringify({ compiler, options, source });
-	for (let c of cache)
-		if (c.input === s) {
-			display(c.output, button.dataset.field);
-			return;
-		}
-	compile(compiler, { source, options }).then((data) => {
-		if (data.okToCache)
-			cache.push({ input: s, output: data });
-		display(data, button.dataset.field);
-	});
+	const button = e.target;
+	const controller = button.closest('.controller');
+	if (!button.matches('button') || !controller) return;
+	const compiler = controller.querySelector('.compiler').selectedOptions[0].value;
+	const options = controller.querySelector('.options').value;
+	const source = document.querySelector('.code').value;
+	const filters = {};
+	for (let checkbox of controller.querySelectorAll('input[type="checkbox"]'))
+		filters[checkbox.name] = checkbox.checked;
+	const s = JSON.stringify({ compiler, options, source, filters });
+	if (cache[s])
+		display(cache[s], button.dataset.field);
+	else
+		compile(compiler, { source, options, filters }).then((data) => {
+			if (data.okToCache)
+				cache[s] = data;
+			display(data, button.dataset.field);
+		});
 });
 function colorize() {
-	for (let line of output.children) {
+	for (const line of output.children) {
 		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, (m, p1, p2) => {
 			const classmap = {
-				1: 'bold',
-				31: 'red',
-				32: 'green',
-				34: 'blue',
-				35: 'magenta',
-				36: 'cyan',
+				1: 'bold', 31: 'red', 32: 'green',
+				34: 'blue', 35: 'magenta', 36: 'cyan',
 			};
-			let classes = p1.split(';').map(x => classmap[+x]).join(' ');
+			const classes = p1.split(';').map(x => classmap[+x]).join(' ');
 			return '<span class="'+classes+'">'+p2+'</span>';
 		});
 		if (line.children.length === 1 && line.children[0].matches('.bold.green'))
@@ -127,25 +113,23 @@ function colorize() {
 }
 output.addEventListener('content-changed', colorize);
 function shorten_filename() {
-	for (let line of output.children)
+	for (const line of output.children)
 		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, (m) => {
-			let span = create('span', { innerText: '.../', title: m, className: 'toggle toggle-short' });
-			span.dataset.short = span.innerText;
+			const span = create('span', { innerText: '.../', title: m, className: 'toggle toggle-abbr' });
+			span.dataset.abbr = span.innerText;
 			return span.outerHTML;
 		});
 }
 output.addEventListener('content-changed', shorten_filename);
-output.addEventListener('click', function (e) {
-	let span = e.target;
+output.addEventListener('click', (e) => {
+	const span = e.target;
 	if (!span || !span.classList.contains('toggle')) return;
-	if (span.classList.contains('toggle-short')) {
-		span.classList.replace('toggle-short', 'toggle-long');
+	if (span.classList.contains('toggle-abbr')) {
+		span.classList.replace('toggle-abbr', 'toggle-full');
 		span.innerText = span.title;
 	} else {
-		span.classList.replace('toggle-long', 'toggle-short');
-		span.innerText = span.dataset.short;
+		span.classList.replace('toggle-full', 'toggle-abbr');
+		span.innerText = span.dataset.abbr;
 	}
 });
 </script>
-</body>
-</html>
