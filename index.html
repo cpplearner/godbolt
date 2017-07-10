@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Compiler Explorer Tool</title>
 <style>
 button, label { font-size: 20px; }
 .code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap; }
-.code { width: calc(100vw - 42px); height:calc(100vh - 200px); margin: 1px; }
+.code { width: calc(100vw - 42px); height: calc(100vh - 200px); margin: 1px; }
 .container { width: calc(100vw - 35px); overflow: auto; }
 .controller { display: table-cell; }
 .controller label { white-space: nowrap; }
@@ -37,11 +38,11 @@ input.options {
 </div>
 <output class="output"></output>
 <template id="filters">
-<label><input type="checkbox" name="binary">binary</label>
-<label><input type="checkbox" name="labels" checked>labels</label>
-<label><input type="checkbox" name="intel" checked>intel</label>
-<label><input type="checkbox" name="commentOnly" checked>comments</label>
-<label><input type="checkbox" name="directives" checked>directives</label>
+<label><input type=checkbox name="binary">binary</label>
+<label><input type=checkbox name="labels" checked>labels</label>
+<label><input type=checkbox name="intel" checked>intel</label>
+<label><input type=checkbox name="commentOnly" checked>comments</label>
+<label><input type=checkbox name="directives" checked>directives</label>
 <div>
 <button class="asm" data-field="asm">assembly</button>
 <button class="stderr" data-field="stderr">stderr</button>
