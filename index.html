@@ -3,12 +3,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Compiler Explorer Tool</title>
 <style>
-button, label { font-size: 20px; }
-.code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap; }
-.code { width: calc(100vw - 42px); height: calc(100vh - 200px); margin: 1px; }
-.container { width: calc(100vw - 35px); overflow: auto; }
-.controller { display: table-cell; }
-.controller label { white-space: nowrap; }
+button, label { font-size: 20px }
+.code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
+.code { width: calc(100vw - 42px); height: calc(100vh - 200px); margin: 1px }
+.code.expanded { height: calc(100vh - 30px) }
+.expand { width: 100%; position: sticky; top: 0; left: 0 }
+.container { width: calc(100vw - 35px); overflow: auto }
+.controller { display: table-cell }
+.controller label { white-space: nowrap }
 select.compiler,
 input.options {
 	width: calc(100vw - 36px);
@@ -16,16 +18,17 @@ input.options {
 	padding: 1px;
 	margin: 1px;
 }
-.output .bold { font-weight: bold; }
-.output .red { color: red; }
-.output .green { color: green; }
-.output .blue { color: blue; }
-.output .magenta { color: magenta; }
-.output .cyan { color: darkcyan; }
-.output .toggle { cursor: pointer; }
+.output .bold { font-weight: bold }
+.output .red { color: red }
+.output .green { color: green }
+.output .blue { color: blue }
+.output .magenta { color: magenta }
+.output .cyan { color: darkcyan }
+.output .toggle { cursor: pointer }
 </style>
 <textarea class="code"></textarea>
 <div class="container">
+<button class="expand">v</button>
 <p class="controller">
 <select class="compiler"><option value="gsnapshot">x86-64 gcc (snapshot)</select>
 <input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always">
@@ -59,6 +62,11 @@ function compile(id, {source = '', options = '', filters}) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
 }
+let code = document.querySelector('.code');
+let output = document.querySelector('.output');
+document.querySelector('.expand').addEventListener('click', (e) => {
+	e.target.innerText = code.classList.toggle('expanded') ? '^' : 'v';
+});
 for (let controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('template#filters').content.cloneNode(true));
 getCompilers().then((data) => {
@@ -69,15 +77,13 @@ getCompilers().then((data) => {
 			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
 	}
 });
-let output = document.querySelector('.output');
 function display(data, attr) {
 	output.innerText = '';
 	if (attr === 'ast')
 		output.append(create('div', { innerText: data.astOutput }));
-	else {
+	else
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
-	}
 	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, attr } });
 };
 let cache = {};
@@ -87,7 +93,7 @@ document.addEventListener('click', (e) => {
 	if (!button.matches('button') || !controller) return;
 	const compiler = controller.querySelector('.compiler').selectedOptions[0].value;
 	const options = controller.querySelector('.options').value;
-	const source = document.querySelector('.code').value;
+	const source = code.value;
 	const filters = {};
 	for (let checkbox of controller.querySelectorAll('input[type="checkbox"]'))
 		filters[checkbox.name] = checkbox.checked;
@@ -105,14 +111,13 @@ function colorize() {
 	for (const line of output.children) {
 		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, (m, p1, p2) => {
 			const classmap = {
-				1: 'bold', 31: 'red', 32: 'green',
-				34: 'blue', 35: 'magenta', 36: 'cyan',
+				1: 'bold', 31: 'red', 32: 'green', 34: 'blue', 35: 'magenta', 36: 'cyan',
 			};
 			const classes = p1.split(';').map(x => classmap[+x]).join(' ');
 			return '<span class="'+classes+'">'+p2+'</span>';
 		});
 		if (line.children.length === 1 && line.children[0].matches('.bold.green'))
-		    line.children[0].classList.remove('bold');
+			line.children[0].classList.remove('bold');
 	}
 }
 output.addEventListener('content-changed', colorize);
@@ -128,12 +133,6 @@ output.addEventListener('content-changed', shorten_filename);
 output.addEventListener('click', (e) => {
 	const span = e.target;
 	if (!span || !span.classList.contains('toggle')) return;
-	if (span.classList.contains('toggle-abbr')) {
-		span.classList.replace('toggle-abbr', 'toggle-full');
-		span.innerText = span.title;
-	} else {
-		span.classList.replace('toggle-full', 'toggle-abbr');
-		span.innerText = span.dataset.abbr;
-	}
+	span.innerText = span.classList.toggle('toggle-abbr') ? span.dataset.abbr : span.title;
 });
 </script>
