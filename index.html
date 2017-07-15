@@ -57,8 +57,7 @@ input.options {
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init).then(x => x.json());
 let getCompilers = () => request('/compilers', { headers: { 'Accept': 'application/json' }});
-function compile(id, {source = '', options = '', filters}) {
-	const body = JSON.stringify({ source, options, filters, backendOptions: { produceAst: true } });
+function compile(id, body) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
 }
@@ -92,16 +91,17 @@ document.addEventListener('click', (e) => {
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
 	const compiler = controller.querySelector('.compiler').selectedOptions[0].value;
-	const options = controller.querySelector('.options').value;
+	const userArguments = controller.querySelector('.options').value;
+	const compilerOptions = { produceAst: true };
 	const source = code.value;
 	const filters = {};
 	for (let checkbox of controller.querySelectorAll('input[type="checkbox"]'))
 		filters[checkbox.name] = checkbox.checked;
-	const s = JSON.stringify({ compiler, options, source, filters });
+	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
 		display(cache[s], button.dataset.field);
 	else
-		compile(compiler, { source, options, filters }).then((data) => {
+		compile(compiler, s).then((data) => {
 			if (data.okToCache)
 				cache[s] = data;
 			display(data, button.dataset.field);
