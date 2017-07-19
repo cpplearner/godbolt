@@ -83,19 +83,19 @@ function display(data, attr) {
 	else
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
-	output.dispatchEvent(new CustomEvent('content-changed'), { detail: { data, attr } });
+	output.dispatchEvent(new CustomEvent('content-changed', { detail: { data, attr } }));
 };
 let cache = {};
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
+	const source = code.value;
 	const compiler = controller.querySelector('.compiler').selectedOptions[0].value;
 	const userArguments = controller.querySelector('.options').value;
 	const compilerOptions = { produceAst: true };
-	const source = code.value;
 	const filters = {};
-	for (let checkbox of controller.querySelectorAll('input[type="checkbox"]'))
+	for (let checkbox of controller.querySelectorAll('input[type=checkbox]'))
 		filters[checkbox.name] = checkbox.checked;
 	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
@@ -135,4 +135,10 @@ output.addEventListener('click', (e) => {
 	if (!span || !span.classList.contains('toggle')) return;
 	span.innerText = span.classList.toggle('toggle-abbr') ? span.dataset.abbr : span.title;
 });
+function strip_ast_output(e) {
+	if (e.detail.attr !== 'ast') return;
+	const rimplicit = /<[^>]+>\|-.*? &lt;(<[^>]+>)+&gt; (<[^>]+>)+ implicit<.*?<br><\/span>(?=<[^>]+>[|`]-)/g;
+	output.innerHTML = output.innerHTML.replace(rimplicit, '');
+}
+output.addEventListener('content-changed', strip_ast_output);
 </script>
