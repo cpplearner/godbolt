@@ -138,7 +138,8 @@ output.addEventListener('click', (e) => {
 function strip_ast_output(e) {
 	if (e.detail.attr !== 'ast') return;
 	const rimplicit = /<[^>]+>\|-.*? &lt;(<[^>]+>)+&gt; (<[^>]+>)+ implicit<.*?<br><\/span>(?=<[^>]+>[|`]-)/g;
-	output.innerHTML = output.innerHTML.replace(rimplicit, '');
+	const raddress = /((<br>(<[^>]+>)+[^A-Za-z]*|^)(<[^>]+>)+[A-Za-z]+(<[^>]+>)+) 0x[a-z0-9]+/g;
+	output.innerHTML = output.innerHTML.replace(rimplicit, '').replace(raddress, '$1');
 }
 output.addEventListener('content-changed', strip_ast_output);
 </script>
