@@ -21,6 +21,7 @@ input.options {
 .output .bold { font-weight: bold }
 .output .red { color: red }
 .output .green { color: green }
+.output .yellow { color: orange }
 .output .blue { color: blue }
 .output .magenta { color: magenta }
 .output .cyan { color: darkcyan }
@@ -55,6 +56,21 @@ input.options {
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
+function replaceTextWithElement(node, regex, callback) {
+    for (let child = node.firstChild; child; child = child.nextSibling)
+        if (child.nodeType === 1)
+            replaceTextWithElement(child, regex, callback);
+        else if (child.nodeType === 3) {
+            let bk = 0;
+            child.data.replace(regex, (...args) => {
+                let newTextNode = child.splitText(args[args.length - 2] + bk);
+                bk -= child.data.length + args[0].length;
+                newTextNode.data = newTextNode.data.substr(args[0].length);
+                newTextNode.before(callback(...args));
+                child = newTextNode;
+            });
+        }
+}
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init).then(x => x.json());
 let getCompilers = () => request('/compilers', { headers: { 'Accept': 'application/json' }});
 function compile(id, body) {
@@ -70,7 +86,7 @@ for (let controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('template#filters').content.cloneNode(true));
 getCompilers().then((data) => {
 	for (const compiler of document.querySelectorAll('.compiler')) {
-		const curid = compiler.selectedOptions[0].value;
+		const curid = compiler.value;
 		compiler.innerText = '';
 		for (const {name, id} of data)
 			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
@@ -84,14 +100,14 @@ function display(data, attr) {
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
 	output.dispatchEvent(new CustomEvent('content-changed', { detail: { data, attr } }));
-};
+}
 let cache = {};
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
 	const source = code.value;
-	const compiler = controller.querySelector('.compiler').selectedOptions[0].value;
+	const compiler = controller.querySelector('.compiler').value;
 	const userArguments = controller.querySelector('.options').value;
 	const compilerOptions = { produceAst: true };
 	const filters = {};
@@ -108,25 +124,22 @@ document.addEventListener('click', (e) => {
 		});
 });
 function colorize() {
-	for (const line of output.children) {
-		line.innerHTML = line.innerHTML.replace(/\033\[(.*?)m(?:\033\[K)?(.*?)(?=\033|$)/g, (m, p1, p2) => {
-			const classmap = {
-				1: 'bold', 31: 'red', 32: 'green', 34: 'blue', 35: 'magenta', 36: 'cyan',
-			};
-			const classes = p1.split(';').map(x => classmap[+x]).join(' ');
-			return '<span class="'+classes+'">'+p2+'</span>';
-		});
-		if (line.children.length === 1 && line.children[0].matches('.bold.green'))
-			line.children[0].classList.remove('bold');
-	}
+	replaceTextWithElement(output, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/g, (m, p1, p2) => {
+		const classmap = {
+			0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
+		};
+		return create('span', { innerText: p2, className: p1.split(';').map(x => classmap[+x]).join(' ') });
+	});
+	[...output.querySelectorAll('.bold.green:only-child')].forEach(x => x.classList.remove('bold'));
 }
 output.addEventListener('content-changed', colorize);
 function shorten_filename() {
-	for (const line of output.children)
-		line.innerHTML = line.innerHTML.replace(/\/opt\/compiler-explorer\/.*?\/include\/c\+\+\/.*?\//g, (m) => {
+	replaceTextWithElement(output,
+		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
+		(m) => {
 			const span = create('span', { innerText: '.../', title: m, className: 'toggle toggle-abbr' });
 			span.dataset.abbr = span.innerText;
-			return span.outerHTML;
+			return span;
 		});
 }
 output.addEventListener('content-changed', shorten_filename);
@@ -137,9 +150,9 @@ output.addEventListener('click', (e) => {
 });
 function strip_ast_output(e) {
 	if (e.detail.attr !== 'ast') return;
-	const rimplicit = /<[^>]+>\|-.*? &lt;(<[^>]+>)+&gt; (<[^>]+>)+ implicit<.*?<br><\/span>(?=<[^>]+>[|`]-)/g;
-	const raddress = /((<br>(<[^>]+>)+[^A-Za-z]*|^)(<[^>]+>)+[A-Za-z]+(<[^>]+>)+) 0x[a-z0-9]+/g;
-	output.innerHTML = output.innerHTML.replace(rimplicit, '').replace(raddress, '$1');
+	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
+	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ .*?<br>(?=<[^>]+>[|`]-)/g;
+	output.innerHTML = output.innerHTML.replace(raddress, '').replace(rimp, '');
 }
 output.addEventListener('content-changed', strip_ast_output);
 </script>
