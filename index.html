@@ -26,7 +26,11 @@ input.options {
 .output .blue { color: blue }
 .output .magenta { color: magenta }
 .output .cyan { color: darkcyan }
+.output .bold.green:only-child { font-weight: normal }
 .output .toggle { cursor: pointer }
+.output .toggle > .full { display: none }
+.output .toggle.full > .abbr { display: none }
+.output .toggle.full > .full { display: unset }
 </style>
 <textarea class="code"></textarea>
 <div class="container">
@@ -50,10 +54,10 @@ input.options {
 <label><input type=checkbox name="commentOnly" checked>comments</label>
 <label><input type=checkbox name="directives" checked>directives</label>
 <div>
-<button class="asm" data-field="asm">assembly</button>
-<button class="stderr" data-field="stderr">stderr</button>
-<button class="stdout" data-field="stdout">stdout</button>
-<button class="ast" data-field="ast">ast</button>
+<button data-field="asm">assembly</button>
+<button data-field="stderr">stderr</button>
+<button data-field="stdout">stdout</button>
+<button data-field="ast">ast</button>
 </div>
 </template>
 <script>
@@ -95,23 +99,71 @@ getCompilers().then((data) => {
 	}
 	document.querySelector('#loading').dataset.show = 0;
 });
+function createTogglable({ abbr, full, tooltip = '' }) {
+	let span = create('span', { className: 'toggle' });
+	let abbrspan = create('span', { className: 'abbr', title: tooltip });
+	abbrspan.append(abbr);
+	let fullspan = create('span', { className: 'full' });
+	fullspan.append(full);
+	span.append(abbrspan, fullspan);
+	return span;
+}
+function display_cl_output({ data, attr }) {
+	let i = 0;
+	let asm = data[attr];
+	let details = create('details');
+	output.innerText = '';
+	while (asm[i].text.startsWith('EXTRN   '))
+		++i;
+	while (i < asm.length) {
+		if (!asm[i].text.startsWith(' ')) {
+			if (asm[i].text.indexOf(' = ') !== -1) {
+				++i;
+				continue;
+			}
+			let t = /^(.*?), COMDAT PROC/.exec(asm[i].text);
+			if (!t)
+				t = /^(.*?) PROC/.exec(asm[i].text);
+			if (t) {
+				let func = t[1];
+				let full = create('div');
+				for (; asm[i].text !== func + ' ENDP'; ++i)
+					full.append(create('div', { innerText: asm[i].text }));
+				++i;
+				if (func.startsWith('?'))
+					details.append(createTogglable({ abbr: create('div', { innerText: func }), full }));
+				continue;
+			}
+		}
+		output.append(create('div', { innerText: asm[i].text }));
+		++i;
+	}
+	if (details.innerText) {
+		details.prepend(create('summary', { innerText: 'functions whose names cannot be demangled' }));
+		output.append(details);
+	}
+}
 let actions = [];
-function display(data, attr) {
+function display(data, attr, s) {
 	output.innerText = '';
 	if (attr === 'ast')
 		output.append(create('div', { innerText: data.astOutput }));
-	else
+	else {
+		if (attr === 'asm' && data.stderr.length > 1 && data.stderr[0].text.startsWith('Microsoft'))
+			if (display_cl_output)
+				return display_cl_output({ data, attr });
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
+	}
 	actions.forEach(f => f({ data, attr }));
-	document.querySelector('#loading').dataset.show -= 1;
+	document.querySelector('#loading').dataset.show--;
 }
 let cache = {};
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
-	document.querySelector('#loading').dataset.show += 1;
+	document.querySelector('#loading').dataset.show++;
 	const source = code.value;
 	const compiler = controller.querySelector('.compiler').value;
 	const userArguments = controller.querySelector('.options').value;
@@ -121,12 +173,12 @@ document.addEventListener('click', (e) => {
 		filters[checkbox.name] = checkbox.checked;
 	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
-		display(cache[s], button.dataset.field);
+		display(cache[s], button.dataset.field, s);
 	else
 		compile(compiler, s).then((data) => {
 			if (data.okToCache)
 				cache[s] = data;
-			display(data, button.dataset.field);
+			display(data, button.dataset.field, s);
 		});
 });
 function colorize() {
@@ -136,23 +188,18 @@ function colorize() {
 		};
 		return create('span', { innerText: p2, className: p1.split(';').map(x => classmap[+x]).join(' ') });
 	});
-	[...output.querySelectorAll('.bold.green:only-child')].forEach(x => x.classList.remove('bold'));
 }
 actions.push(colorize);
 function shorten_filename() {
 	replaceTextWithElement(output,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
-		(m) => {
-			const span = create('span', { innerText: '.../', title: m, className: 'toggle toggle-abbr' });
-			span.dataset.abbr = span.innerText;
-			return span;
-		});
+		(m) => createTogglable({ abbr: '.../', full: m, tooltip: m }));
 }
 actions.push(shorten_filename);
 output.addEventListener('click', (e) => {
-	const span = e.target;
-	if (!span || !span.classList.contains('toggle')) return;
-	span.innerText = span.classList.toggle('toggle-abbr') ? span.dataset.abbr : span.title;
+	const span = e.target.closest('.toggle');
+	if (!span) return;
+	span.classList.toggle('full');
 });
 function strip_ast_output(e) {
 	if (e.attr !== 'ast') return;
