@@ -18,6 +18,7 @@ input.options {
 	padding: 1px;
 	margin: 1px;
 }
+#loading[data-show="0"] { display: none }
 .output .bold { font-weight: bold }
 .output .red { color: red }
 .output .green { color: green }
@@ -40,6 +41,7 @@ input.options {
 <select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
 <input class="options" value="/EHsc /std:c++latest /permissive-">
 </div>
+<div id="loading">loading...</div>
 <output class="output"></output>
 <template id="filters">
 <label><input type=checkbox name="binary">binary</label>
@@ -91,7 +93,9 @@ getCompilers().then((data) => {
 		for (const {name, id} of data)
 			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
 	}
+	document.querySelector('#loading').dataset.show = 0;
 });
+let actions = [];
 function display(data, attr) {
 	output.innerText = '';
 	if (attr === 'ast')
@@ -99,13 +103,15 @@ function display(data, attr) {
 	else
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
-	output.dispatchEvent(new CustomEvent('content-changed', { detail: { data, attr } }));
+	actions.forEach(f => f({ data, attr }));
+	document.querySelector('#loading').dataset.show -= 1;
 }
 let cache = {};
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
+	document.querySelector('#loading').dataset.show += 1;
 	const source = code.value;
 	const compiler = controller.querySelector('.compiler').value;
 	const userArguments = controller.querySelector('.options').value;
@@ -132,7 +138,7 @@ function colorize() {
 	});
 	[...output.querySelectorAll('.bold.green:only-child')].forEach(x => x.classList.remove('bold'));
 }
-output.addEventListener('content-changed', colorize);
+actions.push(colorize);
 function shorten_filename() {
 	replaceTextWithElement(output,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
@@ -142,17 +148,17 @@ function shorten_filename() {
 			return span;
 		});
 }
-output.addEventListener('content-changed', shorten_filename);
+actions.push(shorten_filename);
 output.addEventListener('click', (e) => {
 	const span = e.target;
 	if (!span || !span.classList.contains('toggle')) return;
 	span.innerText = span.classList.toggle('toggle-abbr') ? span.dataset.abbr : span.title;
 });
 function strip_ast_output(e) {
-	if (e.detail.attr !== 'ast') return;
+	if (e.attr !== 'ast') return;
 	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
 	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ .*?<br>(?=<[^>]+>[|`]-)/g;
 	output.innerHTML = output.innerHTML.replace(raddress, '').replace(rimp, '');
 }
-output.addEventListener('content-changed', strip_ast_output);
+actions.push(strip_ast_output);
 </script>
