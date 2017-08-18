@@ -77,18 +77,24 @@ function replaceTextWithElement(node, regex, callback) {
             });
         }
 }
-let request = (url, init) => fetch('https://godbolt.org/api'+url, init).then(x => x.json());
-let getCompilers = () => request('/compilers', { headers: { 'Accept': 'application/json' }});
+let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
+function getCompilers() {
+	if (sessionStorage.getItem('compilers'))
+		return Promise.resolve(sessionStorage.getItem('compilers')).then(JSON.parse);
+	const t = request('/compilers', { headers: { 'Accept': 'application/json' }}).then(x => x.text());
+	t.then(s => sessionStorage.setItem('compilers', s));
+	return t.then(JSON.parse);
+}
 function compile(id, body) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-	return request('/compiler/'+id+'/compile', { method: 'post', headers, body });
+	return request('/compiler/'+id+'/compile', { method: 'post', headers, body }).then(x => x.json());
 }
 let code = document.querySelector('.code');
 let output = document.querySelector('.output');
 document.querySelector('.expand').addEventListener('click', (e) => {
 	e.target.innerText = code.classList.toggle('expanded') ? '^' : 'v';
 });
-for (let controller of document.querySelectorAll('.controller'))
+for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('template#filters').content.cloneNode(true));
 getCompilers().then((data) => {
 	for (const compiler of document.querySelectorAll('.compiler')) {
@@ -100,18 +106,18 @@ getCompilers().then((data) => {
 	document.querySelector('#loading').dataset.show = 0;
 });
 function createTogglable({ abbr, full, tooltip = '' }) {
-	let span = create('span', { className: 'toggle' });
-	let abbrspan = create('span', { className: 'abbr', title: tooltip });
+	const span = create('span', { className: 'toggle' });
+	const abbrspan = create('span', { className: 'abbr', title: tooltip });
 	abbrspan.append(abbr);
-	let fullspan = create('span', { className: 'full' });
+	const fullspan = create('span', { className: 'full' });
 	fullspan.append(full);
 	span.append(abbrspan, fullspan);
 	return span;
 }
 function display_cl_output({ data, attr }) {
 	let i = 0;
-	let asm = data[attr];
-	let details = create('details');
+	const asm = data[attr];
+	const details = create('details');
 	output.innerText = '';
 	while (asm[i].text.startsWith('EXTRN   '))
 		++i;
@@ -125,9 +131,9 @@ function display_cl_output({ data, attr }) {
 			if (!t)
 				t = /^(.*?) PROC/.exec(asm[i].text);
 			if (t) {
-				let func = t[1];
-				let full = create('div');
-				for (; asm[i].text !== func + ' ENDP'; ++i)
+				const func = t[1];
+				const full = create('div');
+				for (; !asm[i].text.startsWith(func + ' ENDP'); ++i)
 					full.append(create('div', { innerText: asm[i].text }));
 				++i;
 				if (func.startsWith('?'))
