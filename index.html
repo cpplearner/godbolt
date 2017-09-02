@@ -7,7 +7,7 @@ button, label { font-size: 20px }
 .code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
 .code { width: calc(100vw - 42px); height: calc(100vh - 200px); margin: 1px }
 .code.expanded { height: calc(100vh - 30px) }
-.expand { width: 100%; position: sticky; top: 0; left: 0 }
+.expand { position: absolute; left: calc(100vw - 50px) }
 .container { width: calc(100vw - 35px); overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
@@ -32,9 +32,9 @@ input.options {
 .output .toggle.full > .abbr { display: none }
 .output .toggle.full > .full { display: unset }
 </style>
+<button class="expand">v</button>
 <textarea class="code"></textarea>
 <div class="container">
-<button class="expand">v</button>
 <p class="controller">
 <select class="compiler"><option value="gsnapshot">x86-64 gcc (snapshot)</select>
 <input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always">
@@ -100,8 +100,11 @@ getCompilers().then((data) => {
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
 		compiler.innerText = '';
-		for (const {name, id} of data)
-			compiler.append(create('option', { value: id, innerText: name, selected: id === curid }));
+		for (const i of data) {
+			const option = create('option', { value: i.id, innerText: i.name, selected: i.id === curid });
+			Object.assign(option.dataset, i);
+			compiler.append(option);
+		}
 	}
 	document.querySelector('#loading').dataset.show = 0;
 });
@@ -114,69 +117,44 @@ function createTogglable({ abbr, full, tooltip = '' }) {
 	span.append(abbrspan, fullspan);
 	return span;
 }
-function display_cl_output({ data, attr }) {
-	let i = 0;
-	const asm = data[attr];
-	const details = create('details');
-	output.innerText = '';
-	while (asm[i].text.startsWith('EXTRN   '))
-		++i;
-	while (i < asm.length) {
-		if (!asm[i].text.startsWith(' ')) {
-			if (asm[i].text.indexOf(' = ') !== -1) {
-				++i;
-				continue;
-			}
-			let t = /^(.*?), COMDAT PROC/.exec(asm[i].text);
-			if (!t)
-				t = /^(.*?) PROC/.exec(asm[i].text);
-			if (t) {
-				const func = t[1];
-				const full = create('div');
-				for (; !asm[i].text.startsWith(func + ' ENDP'); ++i)
-					full.append(create('div', { innerText: asm[i].text }));
-				++i;
-				if (func.startsWith('?'))
-					details.append(createTogglable({ abbr: create('div', { innerText: func }), full }));
-				continue;
-			}
-		}
-		output.append(create('div', { innerText: asm[i].text }));
-		++i;
-	}
-	if (details.innerText) {
-		details.prepend(create('summary', { innerText: 'functions whose names cannot be demangled' }));
-		output.append(details);
-	}
-}
 let actions = [];
 function display(data, attr, s) {
 	output.innerText = '';
 	if (attr === 'ast')
 		output.append(create('div', { innerText: data.astOutput }));
-	else {
-		if (attr === 'asm' && data.stderr.length > 1 && data.stderr[0].text.startsWith('Microsoft'))
-			if (display_cl_output)
-				return display_cl_output({ data, attr });
+	else
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
-	}
 	actions.forEach(f => f({ data, attr }));
 	document.querySelector('#loading').dataset.show--;
 }
 let cache = {};
+let cl_prelude = '#include <iostream>\n';
+for (const w of ['', 'w']) {
+	for (const t of ['short', 'int', 'long', 'long long'])
+		for (const s of ['', 'unsigned'])
+			cl_prelude += `extern template std::${w}ostream& std::${w}ostream::operator<<(${s} ${t});\n`;
+	for (const t of ['float', 'double', 'long double', 'bool', 'const void*'])
+		cl_prelude += `extern template std::${w}ostream& std::${w}ostream::operator<<(${t});\n`;
+	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, char);\n`;
+	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, const char*);\n`;
+}
+cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, char);\n`;
+cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, const char*);\n`;
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
 	document.querySelector('#loading').dataset.show++;
-	const source = code.value;
+	let source = code.value;
 	const compiler = controller.querySelector('.compiler').value;
 	const userArguments = controller.querySelector('.options').value;
 	const compilerOptions = { produceAst: true };
 	const filters = {};
 	for (let checkbox of controller.querySelectorAll('input[type=checkbox]'))
 		filters[checkbox.name] = checkbox.checked;
+	if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType === 'CL')
+		source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
 	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
 		display(cache[s], button.dataset.field, s);
