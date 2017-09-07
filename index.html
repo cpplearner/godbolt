@@ -5,19 +5,12 @@
 <style>
 button, label { font-size: 20px }
 .code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
-.code { width: calc(100vw - 42px); height: calc(100vh - 200px); margin: 1px }
-.code.expanded { height: calc(100vh - 30px) }
-.expand { position: absolute; left: calc(100vw - 50px) }
+.code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px; resize: vertical }
+.expand { position: absolute; left: calc(100vw - 75px) }
 .container { width: calc(100vw - 35px); overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-select.compiler,
-input.options {
-	width: calc(100vw - 36px);
-	box-sizing: border-box;
-	padding: 1px;
-	margin: 1px;
-}
+select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 #loading[data-show="0"] { display: none }
 .output .bold { font-weight: bold }
 .output .red { color: red }
@@ -92,7 +85,13 @@ function compile(id, body) {
 let code = document.querySelector('.code');
 let output = document.querySelector('.output');
 document.querySelector('.expand').addEventListener('click', (e) => {
-	e.target.innerText = code.classList.toggle('expanded') ? '^' : 'v';
+	if (e.target.textContent === '^') {
+		code.style.height = `calc(${getComputedStyle(code).height} - 200px)`;
+		e.target.textContent = 'v';
+	} else {
+		code.style.height = `calc(${getComputedStyle(code).height} + 200px)`;
+		e.target.textContent = '^';
+	}
 });
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('template#filters').content.cloneNode(true));
@@ -119,6 +118,7 @@ function createTogglable({ abbr, full, tooltip = '' }) {
 }
 let actions = [];
 function display(data, attr, s) {
+	output.hidden = true;
 	output.innerText = '';
 	if (attr === 'ast')
 		output.append(create('div', { innerText: data.astOutput }));
@@ -126,6 +126,7 @@ function display(data, attr, s) {
 		for (const {text} of data[attr])
 			output.append(create('div', { innerText: text }));
 	actions.forEach(f => f({ data, attr }));
+	output.hidden = false;
 	document.querySelector('#loading').dataset.show--;
 }
 let cache = {};
@@ -139,8 +140,8 @@ for (const w of ['', 'w']) {
 	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, char);\n`;
 	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, const char*);\n`;
 }
-cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, char);\n`;
-cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, const char*);\n`;
+cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, wchar_t);\n`;
+cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, const wchar_t*);\n`;
 document.addEventListener('click', (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
