@@ -29,11 +29,11 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <textarea class="code"></textarea>
 <div class="container">
 <p class="controller">
-<select class="compiler"><option value="gsnapshot">x86-64 gcc (snapshot)</select>
+<select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
 <input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always">
 <p class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
-<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always -fmodules -stdlib=libc++">
+<input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always -fmodules -stdlib=libc++">
 <p class="controller">
 <select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
 <input class="options" value="/EHsc /std:c++latest /permissive-">
@@ -47,28 +47,20 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <label><input type=checkbox name="commentOnly" checked>comments</label>
 <label><input type=checkbox name="directives" checked>directives</label>
 <div>
-<button data-field="asm">assembly</button>
-<button data-field="stderr">stderr</button>
-<button data-field="stdout">stdout</button>
-<button data-field="ast">ast</button>
+<button name="asm">assembly</button>
+<button name="stderr">stderr</button>
+<button name="stdout">stdout</button>
+<button name="ast">ast</button>
 </div>
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 function replaceTextWithElement(node, regex, callback) {
-    for (let child = node.firstChild; child; child = child.nextSibling)
-        if (child.nodeType === 1)
-            replaceTextWithElement(child, regex, callback);
-        else if (child.nodeType === 3) {
-            let bk = 0;
-            child.data.replace(regex, (...args) => {
-                let newTextNode = child.splitText(args[args.length - 2] + bk);
-                bk -= child.data.length + args[0].length;
-                newTextNode.data = newTextNode.data.substr(args[0].length);
-                newTextNode.before(callback(...args));
-                child = newTextNode;
-            });
-        }
+	node.innerHTML = node.innerHTML.split(/(?=[<>])/g).map((s) => {
+		if (s[0] === '<')
+			return s;
+		return s.replace(regex, callback);
+	}).join('');
 }
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
 function getCompilers() {
@@ -107,15 +99,6 @@ getCompilers().then((data) => {
 	}
 	document.querySelector('#loading').dataset.show = 0;
 });
-function createTogglable({ abbr, full, tooltip = '' }) {
-	const span = create('span', { className: 'toggle' });
-	const abbrspan = create('span', { className: 'abbr', title: tooltip });
-	abbrspan.append(abbr);
-	const fullspan = create('span', { className: 'full' });
-	fullspan.append(full);
-	span.append(abbrspan, fullspan);
-	return span;
-}
 let actions = [];
 function display(data, attr, s) {
 	output.hidden = true;
@@ -158,27 +141,30 @@ document.addEventListener('click', (e) => {
 		source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
 	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
-		display(cache[s], button.dataset.field, s);
+		display(cache[s], button.name, s);
 	else
 		compile(compiler, s).then((data) => {
 			if (data.okToCache)
 				cache[s] = data;
-			display(data, button.dataset.field, s);
+			display(data, button.name, s);
 		});
 });
-function colorize() {
+function colorize(e) {
+	if (e.attr === 'asm') return;
 	replaceTextWithElement(output, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/g, (m, p1, p2) => {
 		const classmap = {
 			0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
 		};
-		return create('span', { innerText: p2, className: p1.split(';').map(x => classmap[+x]).join(' ') });
+		return '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>';
 	});
 }
 actions.push(colorize);
-function shorten_filename() {
+function shorten_filename(e) {
+	if (e.attr === 'asm') return;
 	replaceTextWithElement(output,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
-		(m) => createTogglable({ abbr: '.../', full: m, tooltip: m }));
+		(m) => '<span class="toggle"><span class="abbr" title="'+m+'">.../</span>'+
+			'<span class="full">'+m+'</span></span>');
 }
 actions.push(shorten_filename);
 output.addEventListener('click', (e) => {
