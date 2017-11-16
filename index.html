@@ -30,7 +30,7 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <div class="container">
 <p class="controller">
 <select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
-<input class="options" value="-std=c++1z -Wall -pedantic -fdiagnostics-color=always">
+<input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
 <p class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always -fmodules -stdlib=libc++">
@@ -42,10 +42,14 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <output class="output"></output>
 <template id="filters">
 <label><input type=checkbox name="binary">binary</label>
+<label hidden><input type=checkbox name="execute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
-<label><input type=checkbox name="intel" checked>intel</label>
-<label><input type=checkbox name="commentOnly" checked>comments</label>
 <label><input type=checkbox name="directives" checked>directives</label>
+<label><input type=checkbox name="commentOnly" checked>commentOnly</label>
+<label><input type=checkbox name="trim" checked>trim</label>
+<label><input type=checkbox name="intel" checked>intel</label>
+<label><input type=checkbox name="demangle" checked>demangle</label>
+
 <div>
 <button name="asm">assembly</button>
 <button name="stderr">stderr</button>
@@ -56,11 +60,7 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 function replaceTextWithElement(node, regex, callback) {
-	node.innerHTML = node.innerHTML.split(/(?=[<>])/g).map((s) => {
-		if (s[0] === '<')
-			return s;
-		return s.replace(regex, callback);
-	}).join('');
+	node.innerHTML = node.innerHTML.replace(/>(.*?)</g, (m,p1) => `>${p1.replace(regex, callback)}<`);
 }
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
 function getCompilers() {
@@ -133,11 +133,11 @@ document.addEventListener('click', (e) => {
 	let source = code.value;
 	const compiler = controller.querySelector('.compiler').value;
 	const userArguments = controller.querySelector('.options').value;
-	const compilerOptions = { produceAst: true };
+	const compilerOptions = { produceAst: true, produceGccDump: {} };
 	const filters = {};
 	for (let checkbox of controller.querySelectorAll('input[type=checkbox]'))
 		filters[checkbox.name] = checkbox.checked;
-	if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType === 'CL')
+	if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType.includes('CL'))
 		source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
 	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
 	if (cache[s])
