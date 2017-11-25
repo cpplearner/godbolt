@@ -4,30 +4,33 @@
 <title>Compiler Explorer Tool</title>
 <style>
 button, label { font-size: 20px }
-.code, .output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
-.code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px; resize: vertical }
-.expand { position: absolute; left: calc(100vw - 75px) }
-.container { width: calc(100vw - 35px); overflow: auto }
+#expand { position: absolute; left: calc(100vw - 75px) }
+#expand::after { content: "v" }
+#expand[data-delta^="-"]::after { content: "^" }
+#code, #output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
+#code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px; resize: vertical }
+#container { width: calc(100vw - 35px); overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+#sharelink { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
-.output .bold { font-weight: bold }
-.output .red { color: red }
-.output .green { color: green }
-.output .yellow { color: orange }
-.output .blue { color: blue }
-.output .magenta { color: magenta }
-.output .cyan { color: darkcyan }
-.output .bold.green:only-child { font-weight: normal }
-.output .toggle { cursor: pointer }
-.output .toggle > .full { display: none }
-.output .toggle.full > .abbr { display: none }
-.output .toggle.full > .full { display: unset }
+#output .bold { font-weight: bold }
+#output .red { color: red }
+#output .green { color: green }
+#output .yellow { color: orange }
+#output .blue { color: blue }
+#output .magenta { color: magenta }
+#output .cyan { color: darkcyan }
+#output .bold.green:only-child { font-weight: normal }
+#output .toggle { cursor: pointer }
+#output .toggle > .full { display: none }
+#output .toggle.full > .abbr { display: none }
+#output .toggle.full > .full { display: unset }
 </style>
-<button class="expand">v</button>
-<textarea class="code"></textarea>
-<div class="container">
+<button id="expand" data-delta="200"></button>
+<textarea id="code"></textarea>
+<div id="container">
 <p class="controller">
 <select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
@@ -38,9 +41,11 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
 <input class="options" value="/EHsc /std:c++latest /permissive-">
 </div>
+<a id="sharelink"></a>
 <div id="loading">loading...</div>
-<output class="output"></output>
+<output id="output"></output>
 <template id="filters">
+<div>
 <label><input type=checkbox name="binary">binary</label>
 <label hidden><input type=checkbox name="execute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -49,24 +54,21 @@ select.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; p
 <label><input type=checkbox name="trim" checked>trim</label>
 <label><input type=checkbox name="intel" checked>intel</label>
 <label><input type=checkbox name="demangle" checked>demangle</label>
-
+</div>
 <div>
 <button name="asm">assembly</button>
 <button name="stderr">stderr</button>
 <button name="stdout">stdout</button>
 <button name="ast">ast</button>
+<button name="share">share</button>
 </div>
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
-function replaceTextWithElement(node, regex, callback) {
-	node.innerHTML = node.innerHTML.replace(/>(.*?)</g, (m,p1) => `>${p1.replace(regex, callback)}<`);
-}
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
-function getCompilers() {
-	if (sessionStorage.getItem('compilers'))
-		return Promise.resolve(sessionStorage.getItem('compilers')).then(JSON.parse);
-	const t = request('/compilers', { headers: { 'Accept': 'application/json' }}).then(x => x.text());
+function getCompilers(use_cache = sessionStorage.getItem('compilers')) {
+	if (use_cache) return Promise.resolve(JSON.parse(use_cache));
+	const t = request('/compilers', { headers: { 'Accept': 'application/json' } }).then(x => x.text());
 	t.then(s => sessionStorage.setItem('compilers', s));
 	return t.then(JSON.parse);
 }
@@ -74,43 +76,35 @@ function compile(id, body) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body }).then(x => x.json());
 }
-let code = document.querySelector('.code');
-let output = document.querySelector('.output');
-document.querySelector('.expand').addEventListener('click', (e) => {
-	if (e.target.textContent === '^') {
-		code.style.height = `calc(${getComputedStyle(code).height} - 200px)`;
-		e.target.textContent = 'v';
-	} else {
-		code.style.height = `calc(${getComputedStyle(code).height} + 200px)`;
-		e.target.textContent = '^';
-	}
+document.querySelector('#expand').addEventListener('click', (e) => {
+	const code = document.querySelector('#code');
+	code.style.height = `calc(${getComputedStyle(code).height} + ${e.target.dataset.delta}px)`;
+	e.target.dataset.delta = -e.target.dataset.delta;
 });
 for (const controller of document.querySelectorAll('.controller'))
-	controller.append(document.querySelector('template#filters').content.cloneNode(true));
+	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data) => {
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
-		compiler.innerText = '';
+		compiler.textContent = '';
 		for (const i of data) {
-			const option = create('option', { value: i.id, innerText: i.name, selected: i.id === curid });
+			const option = create('option', { value: i.id, textContent: i.name, selected: i.id === curid });
 			Object.assign(option.dataset, i);
 			compiler.append(option);
 		}
 	}
 	document.querySelector('#loading').dataset.show = 0;
 });
-let actions = [];
-function display(data, attr, s) {
+let actions = {};
+function display(data, attr, s, output = document.querySelector('#output')) {
 	output.hidden = true;
-	output.innerText = '';
+	output.textContent = '';
 	if (attr === 'ast')
-		output.append(create('div', { innerText: data.astOutput }));
+		output.append(create('div', { textContent: data.astOutput }));
 	else
-		for (const {text} of data[attr])
-			output.append(create('div', { innerText: text }));
-	actions.forEach(f => f({ data, attr }));
+		data[attr].forEach((t) => output.append(create('div', { textContent: t.text })));
+	output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr }), output.innerHTML);
 	output.hidden = false;
-	document.querySelector('#loading').dataset.show--;
 }
 let cache = {};
 let cl_prelude = '#include <iostream>\n';
@@ -125,58 +119,70 @@ for (const w of ['', 'w']) {
 }
 cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, wchar_t);\n`;
 cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, const wchar_t*);\n`;
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
 	const button = e.target;
 	const controller = button.closest('.controller');
 	if (!button.matches('button') || !controller) return;
 	document.querySelector('#loading').dataset.show++;
-	let source = code.value;
-	const compiler = controller.querySelector('.compiler').value;
-	const userArguments = controller.querySelector('.options').value;
-	const compilerOptions = { produceAst: true, produceGccDump: {} };
-	const filters = {};
-	for (let checkbox of controller.querySelectorAll('input[type=checkbox]'))
-		filters[checkbox.name] = checkbox.checked;
-	if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType.includes('CL'))
-		source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
-	const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
-	if (cache[s])
-		display(cache[s], button.name, s);
-	else
-		compile(compiler, s).then((data) => {
-			if (data.okToCache)
-				cache[s] = data;
-			display(data, button.name, s);
-		});
+	try {
+		let source = document.querySelector('#code').value;
+		const compiler = controller.querySelector('.compiler').value;
+		const userArguments = controller.querySelector('.options').value;
+		const compilerOptions = { produceAst: true, produceGccDump: {} };
+		const checkboxes = [...controller.querySelectorAll('input[type=checkbox]')];
+		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
+		if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType.includes('CL'))
+			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
+		const sharelink = document.querySelector('#sharelink');
+		sharelink.textContent = sharelink.href = '';
+		if (button.name === 'share') {
+			const es = (s) => s.replace(/['!]/g,(x) => '!'+x);
+			const flt = `filters:(b:'0',${Object.entries(filters).map(([k,v]) => `${k}:'${+!v}'`).join()})`;
+			const options = `options:'${es(userArguments.replace(/-fdiagnostics-color=always/g, ''))}'`;
+			const item = (s) => `g:!((${s},l:'5',n:'0',o:'',t:'0')),k:34,l:'4',n:'0',o:'',s:0,t:'0'`;
+			let s = `g:!((g:!((${item(`h:codeEditor,i:(j:1,source:'${es(source)}')`)}),(${
+				item(`h:compiler,i:(compiler:${compiler},${flt},libs:!(),${options},source:1)`)}),(${
+				item('h:output,i:(compiler:1,editor:1)')})),l:'2',n:'0',o:'',t:'0')),version:4`;
+			s = encodeURIComponent(s).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%20/g, '+');
+			sharelink.textContent = sharelink.href = 'https://godbolt.org/#'+s;
+			return;
+		}
+		const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
+		const data = cache[s] || await compile(compiler, s);
+		if (data.okToCache) cache[s] = data;
+		display(data, button.name, s);
+	} finally {
+		document.querySelector('#loading').dataset.show--;
+	}
 });
-function colorize(e) {
-	if (e.attr === 'asm') return;
-	replaceTextWithElement(output, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/g, (m, p1, p2) => {
+let add_action = (f) => actions[f.name] = window[f.name] = f;
+let replaceTextWithElement = (html, regex, callback) =>
+	html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(regex, callback)}<`);
+add_action(function colorize(html, e) {
+	if (e.attr === 'asm') return html;
+	return replaceTextWithElement(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/mg, (m, p1, p2) => {
 		const classmap = {
 			0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
 		};
 		return '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>';
 	});
-}
-actions.push(colorize);
-function shorten_filename(e) {
-	if (e.attr === 'asm') return;
-	replaceTextWithElement(output,
+});
+add_action(function shorten_filename(html, e) {
+	if (e.attr === 'asm') return html;
+	return replaceTextWithElement(html,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
 		(m) => '<span class="toggle"><span class="abbr" title="'+m+'">.../</span>'+
 			'<span class="full">'+m+'</span></span>');
-}
-actions.push(shorten_filename);
-output.addEventListener('click', (e) => {
+});
+document.querySelector('#output').addEventListener('click', (e) => {
 	const span = e.target.closest('.toggle');
 	if (!span) return;
 	span.classList.toggle('full');
 });
-function strip_ast_output(e) {
-	if (e.attr !== 'ast') return;
+add_action(function strip_ast_output(html, e) {
+	if (e.attr !== 'ast') return html;
 	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
-	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ .*?<br>(?=<[^>]+>[|`]-)/g;
-	output.innerHTML = output.innerHTML.replace(raddress, '').replace(rimp, '');
-}
-actions.push(strip_ast_output);
+	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ [^]*?\n(?=<[^>]+>[|`]-)/g;
+	return html.replace(raddress, '').replace(rimp, '');
+});
 </script>
