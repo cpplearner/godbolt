@@ -88,7 +88,8 @@ getCompilers().then((data) => {
 		const curid = compiler.value;
 		compiler.textContent = '';
 		for (const i of data) {
-			const option = create('option', { value: i.id, textContent: i.name, selected: i.id === curid });
+			const option = create('option', { value: i.id, selected: i.id === curid });
+			option.textContent = i.lang+' : '+i.name;
 			Object.assign(option.dataset, i);
 			compiler.append(option);
 		}
@@ -137,12 +138,10 @@ document.addEventListener('click', async (e) => {
 		sharelink.textContent = sharelink.href = '';
 		if (button.name === 'share') {
 			const es = (s) => s.replace(/['!]/g,(x) => '!'+x);
-			const flt = `filters:(b:'0',${Object.entries(filters).map(([k,v]) => `${k}:'${+!v}'`).join()})`;
-			const options = `options:'${es(userArguments.replace(/-fdiagnostics-color=always/g, ''))}'`;
-			const item = (s) => `g:!((${s},l:'5',n:'0',o:'',t:'0')),k:34,l:'4',n:'0',o:'',s:0,t:'0'`;
-			let s = `g:!((g:!((${item(`h:codeEditor,i:(j:1,source:'${es(source)}')`)}),(${
-				item(`h:compiler,i:(compiler:${compiler},${flt},libs:!(),${options},source:1)`)}),(${
-				item('h:output,i:(compiler:1,editor:1)')})),l:'2',n:'0',o:'',t:'0')),version:4`;
+			const filter = `(${Object.entries(filters).map(([k,v]) => `${k}:'${+!v}'`).join(',')})`;
+			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:'${es(source)}'),l:'5')),l:'4'),(g:!((${
+			`h:compiler,i:(compiler:${compiler},filters:${filter},options:'${es(userArguments)}',source:1)`
+			},l:'5')),l:'4'),(g:!((h:output,i:(compiler:1,editor:1),l:'5')),l:'4')),l:'2')),version:4`;
 			s = encodeURIComponent(s).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%20/g, '+');
 			sharelink.textContent = sharelink.href = 'https://godbolt.org/#'+s;
 			return;
