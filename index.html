@@ -84,14 +84,19 @@ document.querySelector('#expand').addEventListener('click', (e) => {
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data) => {
+	const d = data.reduce((o,v) => ((o[v.group] = o[v.group] || []).push(v), o), {});
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
 		compiler.textContent = '';
-		for (const i of data) {
-			const option = create('option', { value: i.id, selected: i.id === curid });
-			option.textContent = i.lang+' : '+i.name;
-			Object.assign(option.dataset, i);
-			compiler.append(option);
+		for (const group in d) {
+			const optgroup = create('optgroup', { label: group });
+			for (const i of d[group]) {
+				const option = create('option', { value: i.id, selected: i.id === curid });
+				option.textContent = i.lang+' : '+i.name;
+				Object.assign(option.dataset, i);
+				optgroup.append(option);
+			}
+			compiler.append(optgroup);
 		}
 	}
 	document.querySelector('#loading').dataset.show = 0;
@@ -155,20 +160,18 @@ document.addEventListener('click', async (e) => {
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
-let replaceTextWithElement = (html, regex, callback) =>
-	html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(regex, callback)}<`);
+let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(re, cb)}<`);
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
-	return replaceTextWithElement(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/mg, (m, p1, p2) => {
-		const classmap = {
-			0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
-		};
-		return '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>';
-	});
+	const classmap = {
+		0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
+	};
+	return replace(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/mg,
+		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
 });
 add_action(function shorten_filename(html, e) {
 	if (e.attr === 'asm') return html;
-	return replaceTextWithElement(html,
+	return replace(html,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
 		(m) => '<span class="toggle"><span class="abbr" title="'+m+'">.../</span>'+
 			'<span class="full">'+m+'</span></span>');
