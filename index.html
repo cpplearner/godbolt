@@ -36,10 +36,13 @@ button, label { font-size: 20px }
 <input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
 <p class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
-<input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always -fmodules -stdlib=libc++">
+<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libstdc++ --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fdiagnostics-color=always">
+<p class="controller">
+<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
+<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
 <p class="controller">
 <select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
-<input class="options" value="/EHsc /std:c++latest /permissive-">
+<input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
 </div>
 <a id="sharelink"></a>
 <div id="loading">loading...</div>
@@ -84,7 +87,7 @@ document.querySelector('#expand').addEventListener('click', (e) => {
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data) => {
-	const d = data.reduce((o,v) => ((o[v.group] = o[v.group] || []).push(v), o), {});
+	const d = data.reduce((o,v) => (o[v.group] = [...o[v.group] || [], v], o), {});
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
 		compiler.textContent = '';
@@ -137,7 +140,7 @@ document.addEventListener('click', async (e) => {
 		const compilerOptions = { produceAst: true, produceGccDump: {} };
 		const checkboxes = [...controller.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		if (controller.querySelector('.compiler').selectedOptions[0].dataset.compilerType.includes('CL'))
+		if (controller.querySelector('.compiler').selectedOptions[0].dataset.group === 'cl19')
 			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
 		const sharelink = document.querySelector('#sharelink');
 		sharelink.textContent = sharelink.href = '';
