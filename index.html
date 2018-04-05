@@ -164,6 +164,8 @@ document.addEventListener('click', async (e) => {
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
 let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(re, cb)}<`);
+let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
+	+abbr+'</span><span class="full">'+full+'</span></span>';
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
@@ -176,8 +178,7 @@ add_action(function shorten_filename(html, e) {
 	if (e.attr === 'asm') return html;
 	return replace(html,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
-		(m) => '<span class="toggle"><span class="abbr" title="'+m+'">.../</span>'+
-			'<span class="full">'+m+'</span></span>');
+		(m) => make_toggle({ abbr: '.../', full: m, tooltip: m }));
 });
 document.querySelector('#output').addEventListener('click', (e) => {
 	const span = e.target.closest('.toggle');
@@ -189,5 +190,54 @@ add_action(function strip_ast_output(html, e) {
 	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
 	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ [^]*?\n(?=<[^>]+>[|`]-)/g;
 	return html.replace(raddress, '').replace(rimp, '');
+});
+add_action(function shorten_decl(html, e) {
+	return replace(html, /^.*$/g, (m) => {
+		function getHTML(range) {
+			let s = '';
+			let curidx = range.left;
+			for (let r of range.children) {
+				s += m.slice(curidx, r.left);
+				let str = m.slice(r.left, r.right);
+				let full = getHTML(r);
+				if (r.sym === '<>' && r.right - r.left > 26)
+					s += make_toggle({ abbr: '&lt;...&gt;', full, tooltip: str });
+				else if (r.sym === '()' && (r.children.length !== 0 || r.right - r.left > 100))
+					s += make_toggle({ abbr: '(...)', full, tooltip: str });
+				else
+					s += str;
+				curidx = r.right;
+			}
+			s += m.slice(curidx, range.right);
+			return s;
+		}
+		try {
+			let symidx = [];
+			for (let i, re = /&lt;|&gt;|[()]/g; i = re.exec(m);) {
+				symidx.push(i);
+			}
+			let stack = [{ left: 0, right: m.length, children: [] }];
+			for (let { 0: str, index } of symidx) {
+				if (str === '(') stack.push({ left: index, sym: '()', children: [] });
+				if (str === ')') {
+					let prange = {};
+					while (prange.sym !== '()')
+						prange = stack.pop();
+					stack[stack.length - 1].children.push({ right: index+1, ...prange });
+				}
+				if (str === '&lt;') stack.push({ left: index, sym: '<>', children: [] });
+				if (str === '&gt;') {
+					let last = stack[stack.length - 1];
+					if (last.right === undefined && last.sym === '<>') {
+						let prange = stack.pop();
+						stack[stack.length - 1].children.push({ right: index+4, ...prange });
+					}
+				}
+			}
+			return getHTML(stack[0]);
+		} catch (e) {
+			return m;
+		}
+	});
 });
 </script>
