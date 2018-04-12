@@ -193,45 +193,42 @@ add_action(function strip_ast_output(html, e) {
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
-		function getHTML(range) {
-			let s = '';
+		function getHTML(range, s = '') {
 			let curidx = range.left;
-			for (let r of range.children) {
+			for (const r of range.nested) {
 				s += m.slice(curidx, r.left);
-				let str = m.slice(r.left, r.right);
-				let full = getHTML(r);
-				if (r.sym === '<>' && r.right - r.left > 26)
-					s += make_toggle({ abbr: '&lt;...&gt;', full, tooltip: str });
-				else if (r.sym === '()' && (r.children.length !== 0 || r.right - r.left > 100))
-					s += make_toggle({ abbr: '(...)', full, tooltip: str });
+				const t = m.slice(r.left, r.right);
+				let abbr;
+				if (r.sl === '&lt;')
+					abbr = '&lt;...&gt;';
+				else if (r.sl === '(' && (r.nested.length > 0 || r.right - r.left > 99))
+					abbr = '(...)';
+				else if (r.sl === '[')
+					abbr = '[with ...]';
+				if (abbr && r.right - r.left + r.nested.length > 30)
+					s += make_toggle({ abbr, full: getHTML(r), tooltip: t });
 				else
-					s += str;
+					s += t;
 				curidx = r.right;
 			}
 			s += m.slice(curidx, range.right);
 			return s;
 		}
 		try {
-			let symidx = [];
-			for (let i, re = /&lt;|&gt;|[()]/g; i = re.exec(m);) {
+			const symidx = [];
+			for (let i, re = /&lt;|&gt;|[()\[\]]/g; i = re.exec(m);)
 				symidx.push(i);
-			}
-			let stack = [{ left: 0, right: m.length, children: [] }];
-			for (let { 0: str, index } of symidx) {
-				if (str === '(') stack.push({ left: index, sym: '()', children: [] });
-				if (str === ')') {
-					let prange = {};
-					while (prange.sym !== '()')
-						prange = stack.pop();
-					stack[stack.length - 1].children.push({ right: index+1, ...prange });
-				}
-				if (str === '&lt;') stack.push({ left: index, sym: '<>', children: [] });
-				if (str === '&gt;') {
-					let last = stack[stack.length - 1];
-					if (last.right === undefined && last.sym === '<>') {
-						let prange = stack.pop();
-						stack[stack.length - 1].children.push({ right: index+4, ...prange });
-					}
+			const stack = [{ left: 0, right: m.length, nested: [] }];
+			const last = (i = 1) => stack[stack.length - i];
+			for (const { 0: str, index } of symidx) {
+				if (['&lt;', '(', '['].includes(str))
+					stack.push({ left: index, sl: str, nested: [] });
+				else {
+					if ([')', ']'].includes(str))
+						while (last().sl === '&lt;')
+							stack.pop();
+					if (!last().right && (str !== '&gt;' || last().sl === '&lt;'))
+						last(2).nested.push({ right: index + str.length, ...stack.pop() });
 				}
 			}
 			return getHTML(stack[0]);
