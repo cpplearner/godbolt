@@ -87,19 +87,15 @@ document.querySelector('#expand').addEventListener('click', (e) => {
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data) => {
-	const d = data.reduce((o,v) => (o[v.group] = [...o[v.group] || [], v], o), {});
+	data.sort((x,y) => (x.lang+' '+x.group+' '+x.id).localeCompare(y.lang+' '+y.group+' '+y.id));
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
 		compiler.textContent = '';
-		for (const group in d) {
-			const optgroup = create('optgroup', { label: group });
-			for (const i of d[group]) {
-				const option = create('option', { value: i.id, selected: i.id === curid });
-				option.textContent = i.lang+' : '+i.name;
-				Object.assign(option.dataset, i);
-				optgroup.append(option);
-			}
-			compiler.append(optgroup);
+		for (const { groupName, group, lang, id, name } of data) {
+			if (!compiler.lastChild || compiler.lastChild.label !== (groupName || group))
+				compiler.append(create('optgroup', { label: groupName || group }));
+			const o = create('option', { value: id, selected: id === curid, textContent: lang+" : "+name });
+			compiler.lastChild.append(o);
 		}
 	}
 	document.querySelector('#loading').dataset.show = 0;
@@ -111,44 +107,40 @@ function display(data, attr, s, output = document.querySelector('#output')) {
 	if (attr === 'ast')
 		output.append(create('div', { textContent: data.astOutput }));
 	else
-		data[attr].forEach((t) => output.append(create('div', { textContent: t.text })));
+		output.append(...data[attr].map(t => create('div', { textContent: t.text })));
 	output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr }), output.innerHTML);
 	output.hidden = false;
 }
 let cache = {};
-let cl_prelude = '#include <iostream>\n';
-for (const w of ['', 'w']) {
-	for (const t of ['short', 'int', 'long', 'long long'])
-		for (const s of ['', 'unsigned'])
-			cl_prelude += `extern template std::${w}ostream& std::${w}ostream::operator<<(${s} ${t});\n`;
-	for (const t of ['float', 'double', 'long double', 'bool', 'const void*'])
-		cl_prelude += `extern template std::${w}ostream& std::${w}ostream::operator<<(${t});\n`;
-	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, char);\n`;
-	cl_prelude += `extern template std::${w}ostream& std::operator<<(std::${w}ostream&, const char*);\n`;
-}
-cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, wchar_t);\n`;
-cl_prelude += `extern template std::wostream& std::operator<<(std::wostream&, const wchar_t*);\n`;
+let cl_prelude = ((p = 'extern template ', wos = 'std::wostream') => {
+	const int_types = 'short,int,long,long long'.replace(/[^,]+/g, '$&,unsigned $&');
+	const types = (int_types + ',float,double,long double,bool,const void*').split(',');
+	let s = types.map(type => p+'<stream>& <stream>::operator<<('+type+');\n').join('');
+	s += ['char', 'const char*'].map(t => p+'<stream>& std::operator<<(<stream>&, '+t+');\n').join('');
+	s = ['std::ostream', 'std::wostream'].map(stream => s.replace(/<stream>/g, stream)).join('');
+	s += ['wchar_t', 'const wchar_t*'].map(t => p+wos+'& std::operator<<('+wos+'&, '+t+');\n').join('');
+	return '#include <iostream>\n' + s;
+})();
 document.addEventListener('click', async (e) => {
 	const button = e.target;
-	const controller = button.closest('.controller');
-	if (!button.matches('button') || !controller) return;
+	const panel = button.closest('.controller');
+	if (!button.matches('button') || !panel) return;
 	document.querySelector('#loading').dataset.show++;
 	try {
 		let source = document.querySelector('#code').value;
-		const compiler = controller.querySelector('.compiler').value;
-		const userArguments = controller.querySelector('.options').value;
-		const compilerOptions = { produceAst: true, produceGccDump: {} };
-		const checkboxes = [...controller.querySelectorAll('input[type=checkbox]')];
+		const [ compiler, userArguments ] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
+		const compilerOptions = { produceAst: true };
+		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		if (controller.querySelector('.compiler').selectedOptions[0].dataset.group === 'cl19')
+		if (panel.querySelector('.compiler > [label="MSVC"] > :checked'))
 			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
 		const sharelink = document.querySelector('#sharelink');
 		sharelink.textContent = sharelink.href = '';
 		if (button.name === 'share') {
-			const es = (s) => s.replace(/['!]/g,(x) => '!'+x);
-			const filter = `(${Object.entries(filters).map(([k,v]) => `${k}:'${+!v}'`).join(',')})`;
-			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:'${es(source)}'),l:'5')),l:'4'),(g:!((${
-			`h:compiler,i:(compiler:${compiler},filters:${filter},options:'${es(userArguments)}',source:1)`
+			const esc = (s) => "'" + s.replace(/['!]/g,(x) => '!'+x) + "'";
+			const flt = `(${checkboxes.map(e => `${e.name}:'${+!e.checked}'`)})`;
+			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:${esc(source)}),l:'5')),l:'4'),(g:!((${
+			`h:compiler,i:(compiler:${compiler},filters:${flt},options:${esc(userArguments)},source:1)`
 			},l:'5')),l:'4'),(g:!((h:output,i:(compiler:1,editor:1),l:'5')),l:'4')),l:'2')),version:4`;
 			s = encodeURIComponent(s).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%20/g, '+');
 			sharelink.textContent = sharelink.href = 'https://godbolt.org/#'+s;
@@ -164,8 +156,8 @@ document.addEventListener('click', async (e) => {
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
 let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(re, cb)}<`);
-let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
-	+abbr+'</span><span class="full">'+full+'</span></span>';
+let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'
+	+tooltip+'">'+abbr+'</span><span class="full">'+full+'</span></span>';
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
@@ -175,7 +167,6 @@ add_action(function colorize(html, e) {
 		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
 });
 add_action(function shorten_filename(html, e) {
-	if (e.attr === 'asm') return html;
 	return replace(html,
 		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
 		(m) => make_toggle({ abbr: '.../', full: m, tooltip: m }));
@@ -197,18 +188,13 @@ add_action(function shorten_decl(html, e) {
 			let curidx = range.left;
 			for (const r of range.nested) {
 				s += m.slice(curidx, r.left);
-				const t = m.slice(r.left, r.right);
-				let abbr;
-				if (r.sl === '&lt;')
-					abbr = '&lt;...&gt;';
-				else if (r.sl === '(' && (r.nested.length > 0 || r.right - r.left > 99))
-					abbr = '(...)';
-				else if (r.sl === '[')
-					abbr = '[with ...]';
-				if (abbr && r.right - r.left + r.nested.length > 30)
-					s += make_toggle({ abbr, full: getHTML(r), tooltip: t });
+				let abbr = r.sl+'...'+r.sr;
+				if (r.sl === '(' && r.nested.length === 0 && r.right - r.left < 99) abbr = '';
+				if (r.sl === '[') abbr = '[with ...]';
+				if (abbr && r.right - r.left - abbr.length > 30)
+					s += make_toggle({ abbr, full: getHTML(r), tooltip: m.slice(r.left, r.right) });
 				else
-					s += t;
+					s += m.slice(r.left, r.right);
 				curidx = r.right;
 			}
 			s += m.slice(curidx, range.right);
@@ -228,7 +214,7 @@ add_action(function shorten_decl(html, e) {
 						while (last().sl === '&lt;')
 							stack.pop();
 					if (!last().right && (str !== '&gt;' || last().sl === '&lt;'))
-						last(2).nested.push({ right: index + str.length, ...stack.pop() });
+						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
 				}
 			}
 			return getHTML(stack[0]);
