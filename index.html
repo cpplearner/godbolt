@@ -41,7 +41,7 @@ button, label { font-size: 20px }
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
 <p class="controller">
-<select class="compiler"><option value="cl19_64">x86-64 CL 19 2017 RTW</select>
+<select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
 <input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
 </div>
 <a id="sharelink"></a>
@@ -69,11 +69,10 @@ button, label { font-size: 20px }
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
-function getCompilers(use_cache = sessionStorage.getItem('compilers')) {
+function getCompilers(use_cache = sessionStorage.compilers) {
 	if (use_cache) return Promise.resolve(JSON.parse(use_cache));
 	const t = request('/compilers', { headers: { 'Accept': 'application/json' } }).then(x => x.text());
-	t.then(s => sessionStorage.setItem('compilers', s));
-	return t.then(JSON.parse);
+	return t.then(s => JSON.parse(sessionStorage.compilers = s));
 }
 function compile(id, body) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
@@ -87,7 +86,7 @@ document.querySelector('#expand').addEventListener('click', (e) => {
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data) => {
-	data.sort((x,y) => (x.lang+' '+x.group+' '+x.id).localeCompare(y.lang+' '+y.group+' '+y.id));
+	data.sort((x, y) => (x.lang+' '+x.group+' '+x.id).localeCompare(y.lang+' '+y.group+' '+y.id));
 	for (const compiler of document.querySelectorAll('.compiler')) {
 		const curid = compiler.value;
 		compiler.textContent = '';
@@ -102,28 +101,23 @@ getCompilers().then((data) => {
 });
 let actions = {};
 function display(data, attr, s, output = document.querySelector('#output')) {
-	output.hidden = true;
 	output.textContent = '';
 	if (attr === 'ast')
 		output.append(create('div', { textContent: data.astOutput }));
 	else
 		output.append(...data[attr].map(t => create('div', { textContent: t.text })));
 	output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr }), output.innerHTML);
-	output.hidden = false;
 }
 let cache = {};
-let cl_prelude = ((p = 'extern template ', wos = 'std::wostream') => {
+let cl_prelude = ((p = 'extern template ', w = 'std::wostream') => {
 	const int_types = 'short,int,long,long long'.replace(/[^,]+/g, '$&,unsigned $&');
-	const types = (int_types + ',float,double,long double,bool,const void*').split(',');
+	const types = (int_types+',float,double,long double,bool,const void*').split(',');
 	let s = types.map(type => p+'<stream>& <stream>::operator<<('+type+');\n').join('');
 	s += ['char', 'const char*'].map(t => p+'<stream>& std::operator<<(<stream>&, '+t+');\n').join('');
 	s = ['std::ostream', 'std::wostream'].map(stream => s.replace(/<stream>/g, stream)).join('');
-	s += ['wchar_t', 'const wchar_t*'].map(t => p+wos+'& std::operator<<('+wos+'&, '+t+');\n').join('');
-	return '#include <iostream>\n' + s;
+	return s += ['wchar_t', 'const wchar_t*'].map(t => p+w+'& std::operator<<('+w+'&, '+t+');\n').join('');
 })();
-document.addEventListener('click', async (e) => {
-	const button = e.target;
-	const panel = button.closest('.controller');
+document.addEventListener('click', async ({ target: button, panel = button.closest('.controller') }) => {
 	if (!button.matches('button') || !panel) return;
 	document.querySelector('#loading').dataset.show++;
 	try {
@@ -132,12 +126,12 @@ document.addEventListener('click', async (e) => {
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		if (panel.querySelector('.compiler > [label="MSVC"] > :checked'))
-			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, cl_prelude);
+		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
+			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
 		const sharelink = document.querySelector('#sharelink');
 		sharelink.textContent = sharelink.href = '';
 		if (button.name === 'share') {
-			const esc = (s) => "'" + s.replace(/['!]/g,(x) => '!'+x) + "'";
+			const esc = (s) => "'" + s.replace(/['!]/g, '!$&') + "'";
 			const flt = `(${checkboxes.map(e => `${e.name}:'${+!e.checked}'`)})`;
 			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:${esc(source)}),l:'5')),l:'4'),(g:!((${
 			`h:compiler,i:(compiler:${compiler},filters:${flt},options:${esc(userArguments)},source:1)`
@@ -155,9 +149,12 @@ document.addEventListener('click', async (e) => {
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
-let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m,p1) => `>${p1.replace(re, cb)}<`);
+let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m, p1) => `>${p1.replace(re, cb)}<`);
 let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'
 	+tooltip+'">'+abbr+'</span><span class="full">'+full+'</span></span>';
+document.querySelector('#output').addEventListener('click', (e) => {
+	if (e.target.closest('.toggle')) e.target.closest('.toggle').classList.toggle('full');
+});
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
@@ -168,13 +165,8 @@ add_action(function colorize(html, e) {
 });
 add_action(function shorten_filename(html, e) {
 	return replace(html,
-		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/','g'),
+		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/', 'g'),
 		(m) => make_toggle({ abbr: '.../', full: m, tooltip: m }));
-});
-document.querySelector('#output').addEventListener('click', (e) => {
-	const span = e.target.closest('.toggle');
-	if (!span) return;
-	span.classList.toggle('full');
 });
 add_action(function strip_ast_output(html, e) {
 	if (e.attr !== 'ast') return html;
@@ -187,14 +179,13 @@ add_action(function shorten_decl(html, e) {
 		function getHTML(range, s = '') {
 			let curidx = range.left;
 			for (const r of range.nested) {
-				s += m.slice(curidx, r.left);
+				const [p, c] = [m.slice(curidx, r.left), m.slice(r.left, r.right)];
 				let abbr = r.sl+'...'+r.sr;
 				if (r.sl === '(' && r.nested.length === 0 && r.right - r.left < 99) abbr = '';
-				if (r.sl === '[') abbr = '[with ...]';
 				if (abbr && r.right - r.left - abbr.length > 30)
-					s += make_toggle({ abbr, full: getHTML(r), tooltip: m.slice(r.left, r.right) });
+					s += p+make_toggle({ abbr, full: getHTML(r), tooltip: c });
 				else
-					s += m.slice(r.left, r.right);
+					s += p+c;
 				curidx = r.right;
 			}
 			s += m.slice(curidx, range.right);
@@ -202,17 +193,16 @@ add_action(function shorten_decl(html, e) {
 		}
 		try {
 			const symidx = [];
-			for (let i, re = /&lt;|&gt;|[()\[\]]/g; i = re.exec(m);)
+			for (let i, re = /&lt;|&gt;|\(|\)|\[with|\]/g; i = re.exec(m);)
 				symidx.push(i);
 			const stack = [{ left: 0, right: m.length, nested: [] }];
 			const last = (i = 1) => stack[stack.length - i];
 			for (const { 0: str, index } of symidx) {
-				if (['&lt;', '(', '['].includes(str))
+				if (['&lt;', '(', '[with'].includes(str))
 					stack.push({ left: index, sl: str, nested: [] });
 				else {
-					if ([')', ']'].includes(str))
-						while (last().sl === '&lt;')
-							stack.pop();
+					while ([')', ']'].includes(str) && !['(', '[with'].includes(last().sl))
+						stack.pop();
 					if (!last().right && (str !== '&gt;' || last().sl === '&lt;'))
 						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
 				}
