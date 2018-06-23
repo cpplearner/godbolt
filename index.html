@@ -9,10 +9,10 @@ button, label { font-size: 20px }
 #expand[data-delta^="-"]::after { content: "^" }
 #code, #output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
 #code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px; resize: vertical }
-#container { width: calc(100vw - 35px); overflow: auto }
+#container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-.compiler, .options { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+.controller > * { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 #sharelink { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
 #output .bold { font-weight: bold }
@@ -30,25 +30,24 @@ button, label { font-size: 20px }
 </style>
 <button id="expand" data-delta="200"></button>
 <textarea id="code"></textarea>
-<div id="container">
-<p class="controller">
+<ul id="container">
+<li class="controller">
 <select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
-<p class="controller">
+<li class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libstdc++ --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fdiagnostics-color=always">
-<p class="controller">
+<li class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
-<p class="controller">
+<li class="controller">
 <select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
 <input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
-</div>
+</ul>
 <a id="sharelink"></a>
 <div id="loading">loading...</div>
 <output id="output"></output>
 <template id="filters">
-<div>
 <label><input type=checkbox name="binary">binary</label>
 <label hidden><input type=checkbox name="execute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -57,14 +56,12 @@ button, label { font-size: 20px }
 <label><input type=checkbox name="trim" checked>trim</label>
 <label><input type=checkbox name="intel" checked>intel</label>
 <label><input type=checkbox name="demangle" checked>demangle</label>
-</div>
-<div>
+<p>
 <button name="asm">assembly</button>
 <button name="stderr">stderr</button>
 <button name="stdout">stdout</button>
 <button name="ast">ast</button>
 <button name="share">share</button>
-</div>
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
@@ -78,10 +75,9 @@ function compile(id, body) {
 	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
 	return request('/compiler/'+id+'/compile', { method: 'post', headers, body }).then(x => x.json());
 }
-document.querySelector('#expand').addEventListener('click', (e) => {
-	const code = document.querySelector('#code');
-	code.style.height = `calc(${getComputedStyle(code).height} + ${e.target.dataset.delta}px)`;
-	e.target.dataset.delta = -e.target.dataset.delta;
+document.querySelector('#expand').addEventListener('click', ({ target: t, code = t.nextElementSibling }) => {
+	code.style.height = `calc(${getComputedStyle(code).height} + ${t.dataset.delta}px)`;
+	t.dataset.delta = -t.dataset.delta;
 });
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
@@ -115,19 +111,19 @@ let cl_prelude = ((p = 'extern template ', w = 'std::wostream') => {
 	let s = types.map(type => p+'<stream>& <stream>::operator<<('+type+');\n').join('');
 	s += ['char', 'const char*'].map(t => p+'<stream>& std::operator<<(<stream>&, '+t+');\n').join('');
 	s = ['std::ostream', 'std::wostream'].map(stream => s.replace(/<stream>/g, stream)).join('');
-	return s += ['wchar_t', 'const wchar_t*'].map(t => p+w+'& std::operator<<('+w+'&, '+t+');\n').join('');
+	return s + ['wchar_t', 'const wchar_t*'].map(t => p+w+'& std::operator<<('+w+'&, '+t+');\n').join('');
 })();
 document.addEventListener('click', async ({ target: button, panel = button.closest('.controller') }) => {
 	if (!button.matches('button') || !panel) return;
 	document.querySelector('#loading').dataset.show++;
 	try {
 		let source = document.querySelector('#code').value;
+		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
+			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
 		const [ compiler, userArguments ] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
-			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
 		const sharelink = document.querySelector('#sharelink');
 		sharelink.textContent = sharelink.href = '';
 		if (button.name === 'share') {
@@ -179,17 +175,13 @@ add_action(function shorten_decl(html, e) {
 		function getHTML(range, s = '') {
 			let curidx = range.left;
 			for (const r of range.nested) {
-				const [p, c] = [m.slice(curidx, r.left), m.slice(r.left, r.right)];
-				let abbr = r.sl+'...'+r.sr;
-				if (r.sl === '(' && r.nested.length === 0 && r.right - r.left < 99) abbr = '';
-				if (abbr && r.right - r.left - abbr.length > 30)
-					s += p+make_toggle({ abbr, full: getHTML(r), tooltip: c });
+				const [p, c] = [m.slice(curidx, r.left), m.slice(r.left, curidx = r.right)];
+				if (r.right - r.left - (r.sl+r.sr).length > 30)
+					s += p+make_toggle({ abbr: r.sl+'...'+r.sr, full: getHTML(r), tooltip: c });
 				else
 					s += p+c;
-				curidx = r.right;
 			}
-			s += m.slice(curidx, range.right);
-			return s;
+			return s + m.slice(curidx, range.right);
 		}
 		try {
 			const symidx = [];
