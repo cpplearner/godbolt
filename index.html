@@ -193,13 +193,13 @@ add_action(function shorten_decl(html, e) {
 				if (['&lt;', '(', '[with'].includes(str))
 					stack.push({ left: index, sl: str, nested: [] });
 				else {
-					while ([')', ']'].includes(str) && !['(', '[with'].includes(last().sl))
+					while ([')', ']'].includes(str) && !['(', '[with'].includes(last().sl) && last(2))
 						last(2).nested.push(...stack.pop().nested);
-					if (!last().right && (str !== '&gt;' || last().sl === '&lt;'))
+					if (!last().right && (str !== '&gt;' || last().sl === '&lt;') && last(2))
 						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
 				}
 			}
-			while (last().sl)
+			while (last().sl && last(2))
 				last(2).nested.push(...stack.pop().nested);
 			return getHTML(stack[0]);
 		} catch (e) {
