@@ -65,45 +65,27 @@ button, label { font-size: 20px }
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
-let request = (url, init) => fetch('https://godbolt.org/api'+url, init);
-function getCompilers(use_cache = sessionStorage.compilers) {
-	if (use_cache) return Promise.resolve(JSON.parse(use_cache));
-	const t = request('/compilers', { headers: { 'Accept': 'application/json' } }).then(x => x.text());
-	return t.then(s => JSON.parse(sessionStorage.compilers = s));
-}
-function compile(id, body) {
-	const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-	return request('/compiler/'+id+'/compile', { method: 'post', headers, body }).then(x => x.json());
-}
+let request = (url, r = {}, type = 'application/json', morehdrs = { 'Content-Type': type, 'Accept': type }) =>
+	fetch('https://godbolt.org/api'+url, { ...r, headers: { ...r.headers, ...morehdrs } });
+let getCompilers = async (use_cache = sessionStorage.compilers) =>
+	JSON.parse(use_cache || (sessionStorage.compilers = await request('/compilers').then(x => x.text())));
+let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
 document.querySelector('#expand').addEventListener('click', ({ target: t, code = t.nextElementSibling }) => {
 	code.style.height = `calc(${getComputedStyle(code).height} + ${t.dataset.delta}px)`;
 	t.dataset.delta = -t.dataset.delta;
 });
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
-getCompilers().then((data) => {
-	data.sort((x, y) => (x.lang+' '+x.group+' '+x.id).localeCompare(y.lang+' '+y.group+' '+y.id));
-	for (const compiler of document.querySelectorAll('.compiler')) {
-		const curid = compiler.value;
-		compiler.textContent = '';
-		for (const { groupName, group, lang, id, name } of data) {
-			if (!compiler.lastChild || compiler.lastChild.label !== (groupName || group))
-				compiler.append(create('optgroup', { label: groupName || group }));
-			const o = create('option', { value: id, selected: id === curid, textContent: lang+" : "+name });
-			compiler.lastChild.append(o);
-		}
+getCompilers().then((data, d = data.sort((x, y) => x.id.localeCompare(y.id)).map(v => v.groupName || v.group)) => {
+	for (const c of document.querySelectorAll('.compiler')) {
+		const groups = [...new Set(d)].map(v => create('optgroup', { label: v }));
+		const m = groups.map(a => data.filter(e => (e.groupName || e.group) === a.label));
+		const n = m.map(a => a.map(e => new Option(e.lang+' : '+e.name, e.id, 0, e.id === c.value)));
+		Object.assign(c, { textContent: '' }).append(...groups.map((g, i) => (g.append(...n[i]), g)));
 	}
 	document.querySelector('#loading').dataset.show = 0;
 });
 let actions = {};
-function display(data, attr, s, output = document.querySelector('#output')) {
-	output.textContent = '';
-	if (attr === 'ast')
-		output.append(create('div', { textContent: data.astOutput }));
-	else
-		output.append(...data[attr].map(t => create('div', { textContent: t.text })));
-	output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr }), output.innerHTML);
-}
 let cache = {};
 let cl_prelude = ((p = 'extern template ', w = 'std::wostream') => {
 	const int_types = 'short,int,long,long long'.replace(/[^,]+/g, '$&,unsigned $&');
@@ -124,8 +106,7 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		const sharelink = document.querySelector('#sharelink');
-		sharelink.textContent = sharelink.href = '';
+		const sharelink = Object.assign(document.querySelector('#sharelink'), { textContent: '', href: '' });
 		if (button.name === 'share') {
 			const esc = (s) => "'" + s.replace(/['!]/g, '!$&') + "'";
 			const flt = `(${checkboxes.map(e => `${e.name}:'${+!e.checked}'`)})`;
@@ -136,10 +117,16 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 			sharelink.textContent = sharelink.href = 'https://godbolt.org/#'+s;
 			return;
 		}
-		const s = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
-		const data = cache[s] || await compile(compiler, s);
-		if (data.okToCache) cache[s] = data;
-		display(data, button.name, s);
+		const k = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
+		const data = cache[k] || await compile(compiler, k);
+		if (data.okToCache) cache[k] = data;
+		const output = Object.assign(document.querySelector('#output'), { textContent: '' });
+		if (button.name === 'ast')
+			output.append(create('div', { textContent: data.astOutput }));
+		else
+			output.append(...data[button.name].map(t => create('div', { textContent: t.text })));
+		const h = output.innerHTML;
+		output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr: button.name }), h);
 	} finally {
 		document.querySelector('#loading').dataset.show--;
 	}
@@ -148,9 +135,8 @@ let add_action = (f) => actions[f.name] = window[f.name] = f;
 let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m, p1) => `>${p1.replace(re, cb)}<`);
 let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'
 	+tooltip+'">'+abbr+'</span><span class="full">'+full+'</span></span>';
-document.querySelector('#output').addEventListener('click', (e) => {
-	if (e.target.closest('.toggle')) e.target.closest('.toggle').classList.toggle('full');
-});
+document.querySelector('#output').addEventListener('click', (e) => 
+	e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
