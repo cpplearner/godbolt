@@ -3,19 +3,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Compiler Explorer Tool</title>
 <style>
+body { overflow: scroll }
 button, label { font-size: 20px }
-#expand { display: none }
-#expand + label { background: #BBB; width: 1em; text-align: center; position: absolute; top: 10px; left: calc(100vw - 48px) }
-#expand + label::after { content: 'v' }
-#expand:checked + label::after { content: '^' }
-#expand:checked + label + #code { height: calc(100vh - 50px) }
+.toggle { cursor: pointer }
+.toggle > .full { display: none }
+.toggle.full > .abbr { display: none }
+.toggle.full > .full { display: unset }
+#expand { position: absolute; top: 9px; right: 10px }
+#expand.full + #code { height: calc(100vh - 50px) }
 #code, #output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
 #code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px }
 #container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
 .controller > * { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
-#sharelink { display: block; word-break: break-all; white-space: pre-wrap }
+#link { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
 #output .bold { font-weight: bold }
 #output .red { color: red }
@@ -25,13 +27,8 @@ button, label { font-size: 20px }
 #output .magenta { color: magenta }
 #output .cyan { color: darkcyan }
 #output .bold.green:only-child { font-weight: normal }
-#output .toggle { cursor: pointer }
-#output .toggle > .full { display: none }
-#output .toggle.full > .abbr { display: none }
-#output .toggle.full > .full { display: unset }
 </style>
-<input id="expand" type=checkbox>
-<label for="expand"></label>
+<span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <textarea id="code"></textarea>
 <ul id="container">
 <li class="controller">
@@ -47,7 +44,7 @@ button, label { font-size: 20px }
 <select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
 <input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
 </ul>
-<a id="sharelink"></a>
+<a id="lnk"></a>
 <div id="loading">loading...</div>
 <output id="output"></output>
 <template id="filters">
@@ -64,7 +61,7 @@ button, label { font-size: 20px }
 <button name="stderr">stderr</button>
 <button name="stdout">stdout</button>
 <button name="ast">ast</button>
-<button name="share">share</button>
+<button name="makelink">link</button>
 </template>
 <script>
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
@@ -73,6 +70,10 @@ let request = (url, r = {}, type = 'application/json', morehdrs = { 'Content-Typ
 let getCompilers = async (use_cache = sessionStorage.compilers) =>
 	JSON.parse(use_cache || (sessionStorage.compilers = await request('/compilers').then(x => x.text())));
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
+let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'
+	+tooltip+'">'+abbr+'</span><span class="full">'+full+'</span></span>';
+document.addEventListener('click', (e) =>
+	e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 getCompilers().then((data, d = data.sort((x, y) => x.id.localeCompare(y.id)).map(v => v.groupName || v.group)) => {
@@ -101,24 +102,23 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		let source = document.querySelector('#code').value;
 		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
 			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
-		const [ compiler, userArguments ] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
+		const [compiler, userArguments] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		const sharelink = Object.assign(document.querySelector('#sharelink'), { textContent: '', href: '' });
-		if (button.name === 'share') {
-			const esc = (s) => "'" + s.replace(/['!]/g, '!$&') + "'";
+		const lnk = Object.assign(document.querySelector('#lnk'), { textContent: '', href: '' });
+		if (button.name === 'makelink') {
+			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
 			const flt = `(${checkboxes.map(e => `${e.name}:'${+!e.checked}'`)})`;
 			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:${esc(source)}),l:'5')),l:'4'),(g:!((${
 			`h:compiler,i:(compiler:${compiler},filters:${flt},options:${esc(userArguments)},source:1)`
 			},l:'5')),l:'4'),(g:!((h:output,i:(compiler:1,editor:1),l:'5')),l:'4')),l:'2')),version:4`;
 			s = encodeURIComponent(s).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%20/g, '+');
-			sharelink.textContent = sharelink.href = 'https://godbolt.org/#'+s;
+			lnk.textContent = lnk.href = 'https://godbolt.org/#'+s;
 			return;
 		}
 		const k = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters } });
-		const data = cache[k] || await compile(compiler, k);
-		if (data.okToCache) cache[k] = data;
+		const data = cache[k] || await compile(compiler, k).then(a => a.okToCache ? cache[k] = a : a);
 		const output = Object.assign(document.querySelector('#output'), { textContent: '' });
 		if (button.name === 'ast')
 			output.append(create('div', { textContent: data.astOutput }));
@@ -131,11 +131,7 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
-let replace = (html, re, cb) => html.replace(/>([^]*?)</g, (m, p1) => `>${p1.replace(re, cb)}<`);
-let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'
-	+tooltip+'">'+abbr+'</span><span class="full">'+full+'</span></span>';
-document.querySelector('#output').addEventListener('click', (e) => 
-	e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
+let replace = (html, re, cb) => html.replace(/>([^]+?)</g, (m, p1) => `>${p1.replace(re, cb)}<`);
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
@@ -145,9 +141,8 @@ add_action(function colorize(html, e) {
 		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
 });
 add_action(function shorten_filename(html, e) {
-	return replace(html,
-		RegExp('/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/|/tmp/compiler-explorer-compiler.*?/', 'g'),
-		(m) => make_toggle({ abbr: '.../', full: m, tooltip: m }));
+	const f = ['/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/', '/tmp/compiler-explorer-compiler.*?/'];
+	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({ abbr: '.../', full: m, tooltip: m }));
 });
 add_action(function strip_ast_output(html, e) {
 	if (e.attr !== 'ast') return html;
