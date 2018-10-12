@@ -141,7 +141,10 @@ add_action(function colorize(html, e) {
 		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
 });
 add_action(function shorten_filename(html, e) {
-	const f = ['/opt/compiler-explorer/.*?/include/c\\+\\+/.*?/', '/tmp/compiler-explorer-compiler.*?/'];
+	const f = [
+		'/opt/compiler-explorer/(?:libs/(?:.*?/include/(?=[^/]*?/))?|[^/]*?/include/c\\+\\+/[^/]*?/)',
+		'/tmp/compiler-explorer-compiler.*?/',
+	];
 	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({ abbr: '.../', full: m, tooltip: m }));
 });
 add_action(function strip_ast_output(html, e) {
