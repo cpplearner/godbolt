@@ -16,7 +16,7 @@ button, label { font-size: 20px }
 #container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-.controller > * { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+input:not([type]), select, p { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 #link { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
 #output .bold { font-weight: bold }
@@ -30,19 +30,20 @@ button, label { font-size: 20px }
 </style>
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <textarea id="code"></textarea>
+<input id="globaloptions">
 <ul id="container">
 <li class="controller">
-<select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
+<select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
 <li class="controller">
-<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
 <input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libstdc++ --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fdiagnostics-color=always">
-<li class="controller">
 <select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
-<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
 <li class="controller">
-<select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
+<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
+<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
+<li class="controller">
 <input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
+<select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
 </ul>
 <a id="lnk"></a>
 <div id="loading">loading...</div>
@@ -102,7 +103,8 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		let source = document.querySelector('#code').value;
 		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
 			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
-		const [compiler, userArguments] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
+		const [compiler, options] = ['.compiler', '.options'].map(s => panel.querySelector(s).value);
+		const userArguments = document.querySelector('#globaloptions').value + ' ' + options;
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
