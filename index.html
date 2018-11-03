@@ -144,7 +144,7 @@ add_action(function colorize(html, e) {
 });
 add_action(function shorten_filename(html, e) {
 	const f = [
-		'/opt/compiler-explorer/(?:libs/(?:.*?/include/(?=[^/]*?/))?|[^/]*?/include/c\\+\\+/[^/]*?/)',
+		'/opt/compiler-explorer/(?:libs/(?:.*?/include/(?=[^/]*?/))?|.*?/include/c\\+\\+/[^/]*?/)',
 		'/tmp/compiler-explorer-compiler.*?/',
 	];
 	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({ abbr: '.../', full: m, tooltip: m }));
