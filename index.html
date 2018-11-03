@@ -170,15 +170,15 @@ add_action(function shorten_decl(html, e) {
 		}
 		try {
 			const symidx = [];
-			for (let i, re = /&lt;|&gt;|\(|\)|\[with|\]/g; i = re.exec(m);)
+			for (let i, re = /&lt;|&gt;|\(|\)|\[|\]/g; i = re.exec(m);)
 				symidx.push(i);
 			const stack = [{ left: 0, right: m.length, nested: [] }];
 			const last = (i = 1) => stack[stack.length - i];
 			for (const { 0: str, index } of symidx) {
-				if (['&lt;', '(', '[with'].includes(str))
+				if (['&lt;', '(', '['].includes(str))
 					stack.push({ left: index, sl: str, nested: [] });
 				else {
-					while ([')', ']'].includes(str) && !['(', '[with'].includes(last().sl) && last(2))
+					while ([')', ']'].includes(str) && !['(', '['].includes(last().sl) && last(2))
 						last(2).nested.push(...stack.pop().nested);
 					if (!last().right && (str !== '&gt;' || last().sl === '&lt;') && last(2))
 						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
