@@ -12,12 +12,13 @@ button, label, summary { font-size: 20px }
 #expand { position: absolute; top: 9px; right: 10px }
 #expand.full + #code { height: calc(100vh - 50px) }
 #code, #output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
-#code { width: calc(100vw - 42px); height: calc(100vh - 250px); margin: 1px }
+#code { width: calc(100vw - 42px); height: calc(100vh - 300px); margin: 1px }
 #container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-#goptions, .options, .compiler, p { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
-#link { display: block; word-break: break-all; white-space: pre-wrap }
+#goptions, .options, .compiler, .libs, p { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+.libs { height: 100px; overflow: scroll }
+#lnk { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
 #output .bold { font-weight: bold }
 #output .red { color: red }
@@ -49,6 +50,7 @@ button, label, summary { font-size: 20px }
 <div id="loading">loading...</div>
 <output id="output"></output>
 <template id="filters">
+<details><summary>include libs</summary><div class="libs"></div></details>
 <label><input type=checkbox name="binary">binary</label>
 <label hidden><input type=checkbox name="execute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -83,16 +85,40 @@ for (const controller of document.querySelectorAll('.controller'))
 	controller.append(document.querySelector('#filters').content.cloneNode(true));
 let getOptions = (panel) => document.querySelector('#goptions').value + ' ' + panel.querySelector('.options').value;
 let compilers = [];
-document.addEventListener('input', ({ target }) => {
+['input', 'change'].forEach(ev => document.addEventListener(ev, ({ target }) => {
 	let panel = target.closest('.controller');
 	if (!panel) return;
 	const compiler = compilers.find(x => x.id === panel.querySelector('.compiler').value);
-	const { tools = {} } = compiler;
+	const { tools = {}, libs = {} } = compiler;
 	if (target.matches('.compiler')) {
 		const t = Object.entries(tools).map(x => create('button', { name: x[1].tool.id, textContent: x[0] }));
 		init(panel.querySelector('.tools'), t.map(x => init(create('div'), [x, create('input')])));
+		init(panel.querySelector('.libs'), Object.entries(libs).map(([id, { name, url, description, versions }]) => {
+			const s = init(create('details'), [create('summary', { textContent: name })]);
+			for (const v of Object.values(versions)) {
+				const i = init(create('label'), [create('input', { type: 'checkbox' }), v.version]);
+				i.querySelector('input').dataset.path = JSON.stringify(v.path);
+				s.append(i);
+			}
+			return s;
+		}));
+	} else if (target.type === 'checkbox') {
+		const path = JSON.parse(target.dataset.path || []);
+		const rpl = (n, p, r) => n.value = n.value.replace(p, r);
+		const reesc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		if (target.checked && !path.every(s => getOptions(panel).includes(s)))
+			rpl(panel.querySelector('.options'), / *$/, ' '+path.map(x => compiler.includeFlag+x).join(' '));
+		else if (!target.checked)
+			rpl(panel.querySelector('.options'), RegExp(` *[^ ]+(${path.map(reesc).join('|')}) *`, 'g'), ' ');
+	} else if (target.type === 'text') {
+		const options = getOptions(panel);
+		for (const checkbox of panel.querySelectorAll('input[data-path]')) {
+			const path = JSON.parse(checkbox.dataset.path);
+			checkbox.checked = path.every(s => options.includes(s));
+			checkbox.indeterminate = !checkbox.checked && path.some(s => options.includes(s));
+		}
 	}
-});
+}));
 getCompilers().then((data, gN = v => v.groupName || v.group, labels = [...new Set(data.map(gN))]) => {
 	compilers = data.sort((x, y) => x.id.localeCompare(y.id));
 	for (const c of document.querySelectorAll('.compiler'))
@@ -121,7 +147,7 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		const compiler = panel.querySelector('.compiler').value;
 		const userArguments = getOptions(panel);
 		const compilerOptions = { produceAst: true };
-		const checkboxes = [...panel.querySelectorAll('input[type=checkbox]')];
+		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
 		const tools = [...panel.querySelectorAll('.tools > div')].map(
 			x => ({ id: x.querySelector('button').name, args: x.querySelector('input').value }));
