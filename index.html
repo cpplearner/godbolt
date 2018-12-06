@@ -51,19 +51,19 @@ button, label, summary { font-size: 20px }
 <output id="output"></output>
 <template id="filters">
 <details><summary>include libs</summary><div class="libs"></div></details>
-<label><input type=checkbox name="binary">binary</label>
+<label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label hidden><input type=checkbox name="execute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
 <label><input type=checkbox name="directives" checked>directives</label>
 <label><input type=checkbox name="commentOnly" checked>commentOnly</label>
 <label><input type=checkbox name="trim" checked>trim</label>
-<label><input type=checkbox name="intel" checked>intel</label>
-<label><input type=checkbox name="demangle" checked>demangle</label>
+<label><input type=checkbox name="intel" data-enableif="supportsIntel" checked>intel</label>
+<label><input type=checkbox name="demangle" data-enableif="supportsDemangle" checked>demangle</label>
 <p>
 <button name="asm">assembly</button>
 <button name="stderr">stderr</button>
 <button name="stdout">stdout</button>
-<button name="ast">ast</button>
+<button name="ast" data-enableif="supportsAstView">ast</button>
 <button name="makelink">link</button>
 <details><summary>tools</summary><div class="tools"></div></details>
 </template>
@@ -81,16 +81,16 @@ let init = (node, nodes = []) => {
 let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
 	+abbr+'</span><span class="full">'+full+'</span></span>';
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
-for (const controller of document.querySelectorAll('.controller'))
-	controller.append(document.querySelector('#filters').content.cloneNode(true));
+for (const panel of document.querySelectorAll('.controller'))
+	panel.append(document.querySelector('#filters').content.cloneNode(true));
 let getOptions = (panel) => document.querySelector('#goptions').value + ' ' + panel.querySelector('.options').value;
 let compilers = [];
-['input', 'change'].forEach(ev => document.addEventListener(ev, ({ target }) => {
-	let panel = target.closest('.controller');
+['input', 'change'].forEach(ev => document.addEventListener(ev, ({ target, panel = target.closest('.controller') }) => {
 	if (!panel) return;
 	const compiler = compilers.find(x => x.id === panel.querySelector('.compiler').value);
 	const { tools = {}, libs = {} } = compiler;
 	if (target.matches('.compiler')) {
+		[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !compiler[x.dataset.enableif]);
 		const t = Object.entries(tools).map(x => create('button', { name: x[1].tool.id, textContent: x[0] }));
 		init(panel.querySelector('.tools'), t.map(x => init(create('div'), [x, create('input')])));
 		init(panel.querySelector('.libs'), Object.entries(libs).map(([id, { name, url, description, versions }]) => {
@@ -103,7 +103,7 @@ let compilers = [];
 			return s;
 		}));
 	} else if (target.type === 'checkbox') {
-		const path = JSON.parse(target.dataset.path || []);
+		const path = JSON.parse(target.dataset.path || '[]');
 		const rpl = (n, p, r) => n.value = n.value.replace(p, r);
 		const reesc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		if (target.checked && !path.every(s => getOptions(panel).includes(s)))
@@ -149,8 +149,7 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		const tools = [...panel.querySelectorAll('.tools > div')].map(
-			x => ({ id: x.querySelector('button').name, args: x.querySelector('input').value }));
+		const tools = [...panel.querySelectorAll('.tools button')].map(x => ({ id: x.name, args: x.nextSibling.value }));
 		const lnk = Object.assign(init(document.querySelector('#lnk')), { href: '' });
 		if (button.name === 'makelink') {
 			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
@@ -224,7 +223,7 @@ add_action(function shorten_decl(html, e) {
 				if (['&lt;', '(', '['].includes(str))
 					stack.push({ left: index, sl: str, nested: [] });
 				else {
-					while ([')', ']'].includes(str) && !['(', '['].includes(last().sl) && last(2))
+					while (str !== '&gt;' && last().sl !== { ')': '(', ']': '[' }[str] && last(2))
 						last(2).nested.push(...stack.pop().nested);
 					if (!last().right && (str !== '&gt;' || last().sl === '&lt;') && last(2))
 						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
