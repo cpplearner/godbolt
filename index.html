@@ -4,7 +4,7 @@
 <title>Compiler Explorer Tool</title>
 <style>
 body { overflow: scroll }
-button, label, summary { font-size: 20px }
+button, label { font-size: 20px }
 .toggle { cursor: pointer }
 .toggle > .full { display: none }
 .toggle.full > .abbr { display: none }
@@ -16,8 +16,11 @@ button, label, summary { font-size: 20px }
 #container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-#goptions, .options, .compiler, .libs, p { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+#goptions, .options, .compiler, .libs, p, #fromlink { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 .libs { height: 100px; overflow: scroll }
+.tools > div, #fromlink { display: flex }
+.tools > div > button, #fillinput { flex: none }
+.tools > div > input, #sl { width: 100% }
 #lnk { display: block; word-break: break-all; white-space: pre-wrap }
 #loading[data-show="0"] { display: none }
 #output .bold { font-weight: bold }
@@ -32,24 +35,14 @@ button, label, summary { font-size: 20px }
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <textarea id="code"></textarea>
 <input id="goptions">
-<ul id="container">
-<li class="controller">
-<input class="options" value="-std=c++2a -Wall -pedantic -fdiagnostics-color=always">
-<select class="compiler"><option value="gsnapshot">x86-64 gcc (trunk)</select>
-<li class="controller">
-<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libstdc++ --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fdiagnostics-color=always">
-<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
-<li class="controller">
-<input class="options" value="-std=c++2a -Wall -pedantic -stdlib=libc++ -fmodules -fdiagnostics-color=always">
-<select class="compiler"><option value="clang_trunk">x86-64 clang (trunk)</select>
-<li class="controller">
-<input class="options" value="/EHsc /std:c++latest /permissive- /utf-8">
-<select class="compiler"><option value="cl_new_64">x86-64 MSVC Pre 2018</select>
-</ul>
+<ul id="container"></ul>
+<div id="fromlink"><input id="sl" value="https://godbolt.org/z/TdJXRE"><button id="fillinput">fill</button></div>
 <a id="lnk"></a>
-<div id="loading">loading...</div>
+<div id="loading" data-show="-2">loading...</div>
 <output id="output"></output>
-<template id="filters">
+<template id="panel">
+<input class="options">
+<select class="compiler"><option value="gsnapshot"></select>
 <details><summary>include libs</summary><div class="libs"></div></details>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label hidden><input type=checkbox name="execute">execute</label>
@@ -72,6 +65,7 @@ let request = (url, r = {}, type = 'application/json', morehdrs = { 'Content-Typ
 	fetch('https://godbolt.org/api'+url, { ...r, headers: { ...r.headers, ...morehdrs } });
 let getCompilers = async (use_cache = sessionStorage.compilers) =>
 	JSON.parse(use_cache || (sessionStorage.compilers = await request('/compilers').then(x => x.text())));
+let getInfo = (s) => request('/shortlinkinfo/'+s).then(x => x.json());
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 let init = (node, nodes = []) => {
@@ -81,51 +75,64 @@ let init = (node, nodes = []) => {
 let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
 	+abbr+'</span><span class="full">'+full+'</span></span>';
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
-for (const panel of document.querySelectorAll('.controller'))
-	panel.append(document.querySelector('#filters').content.cloneNode(true));
-let getOptions = (panel) => document.querySelector('#goptions').value + ' ' + panel.querySelector('.options').value;
+let panel_tmplt = document.querySelector('#panel').content;
+document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
 let compilers = [];
+let reinitpanel = (panel, select = panel.querySelector('.compiler'), c = compilers.find(x => x.id === select.value)) => {
+	if (!c) return;
+	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
+	const t = Object.entries(c.tools || {}).map(x => create('button', { name: x[1].tool.id, textContent: x[0] }));
+	init(panel.querySelector('.tools'), t.map(x => init(create('div'), [x, create('input')])));
+	init(panel.querySelector('.libs'), Object.entries(c.libs || {}).map(([id, { name, url, description, versions }]) => {
+		const s = init(create('details'), [create('summary', { textContent: name })]);
+		for (const v of Object.values(versions)) {
+			const i = init(create('label'), [create('input', { type: 'checkbox' }), v.version]);
+			i.querySelector('input').dataset.path = JSON.stringify(v.path);
+			s.append(i);
+		}
+		return s;
+	}));
+};
+let syncwithlibs = (options, path, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
+	if (checked) return path.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' -I'+s));
+	rpl(RegExp(` *(${path.map(s => '-I'+s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}) *`, 'g'), ' ');
+};
 ['input', 'change'].forEach(ev => document.addEventListener(ev, ({ target, panel = target.closest('.controller') }) => {
 	if (!panel) return;
-	const compiler = compilers.find(x => x.id === panel.querySelector('.compiler').value);
-	const { tools = {}, libs = {} } = compiler;
-	if (target.matches('.compiler')) {
-		[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !compiler[x.dataset.enableif]);
-		const t = Object.entries(tools).map(x => create('button', { name: x[1].tool.id, textContent: x[0] }));
-		init(panel.querySelector('.tools'), t.map(x => init(create('div'), [x, create('input')])));
-		init(panel.querySelector('.libs'), Object.entries(libs).map(([id, { name, url, description, versions }]) => {
-			const s = init(create('details'), [create('summary', { textContent: name })]);
-			for (const v of Object.values(versions)) {
-				const i = init(create('label'), [create('input', { type: 'checkbox' }), v.version]);
-				i.querySelector('input').dataset.path = JSON.stringify(v.path);
-				s.append(i);
-			}
-			return s;
-		}));
-	} else if (target.type === 'checkbox') {
-		const path = JSON.parse(target.dataset.path || '[]');
-		const rpl = (n, p, r) => n.value = n.value.replace(p, r);
-		const reesc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		if (target.checked && !path.every(s => getOptions(panel).includes(s)))
-			rpl(panel.querySelector('.options'), / *$/, ' '+path.map(x => compiler.includeFlag+x).join(' '));
-		else if (!target.checked)
-			rpl(panel.querySelector('.options'), RegExp(` *[^ ]+(${path.map(reesc).join('|')}) *`, 'g'), ' ');
-	} else if (target.type === 'text') {
-		const options = getOptions(panel);
+	if (target.matches('.compiler')) return reinitpanel(panel);
+	if (target.type === 'checkbox' && target.dataset.path)
+		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.path), target.checked);
+	else if (target.matches('.options')) {
 		for (const checkbox of panel.querySelectorAll('input[data-path]')) {
 			const path = JSON.parse(checkbox.dataset.path);
-			checkbox.checked = path.every(s => options.includes(s));
-			checkbox.indeterminate = !checkbox.checked && path.some(s => options.includes(s));
+			checkbox.checked = path.every(s => target.value.includes(s));
+			checkbox.indeterminate = !checkbox.checked && path.some(s => target.value.includes(s));
 		}
 	}
 }));
 getCompilers().then((data, gN = v => v.groupName || v.group, labels = [...new Set(data.map(gN))]) => {
 	compilers = data.sort((x, y) => x.id.localeCompare(y.id));
-	for (const c of document.querySelectorAll('.compiler'))
-		init(c, labels.map(v => init(create('optgroup', { label: v }), data.filter(e => gN(e) === v)
+	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
+		reinitpanel(init(c, labels.map(v => init(create('optgroup', { label: v }), data.filter(e => gN(e) === v)
 			.map(e => create('option', { text: e.lang+' : '+e.name, value: e.id, selected: e.id === c.value }))
-		))).dispatchEvent(new Event('input', { bubbles: true }));
-	document.querySelector('#loading').dataset.show = 0;
+		))).parentNode);
+	document.querySelector('#loading').dataset.show++;
+});
+let loadstate = (data) => {
+	document.querySelector('#code').value = data.sessions[0].source;
+	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
+		const panel = panel_tmplt.cloneNode(true);
+		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
+		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
+		reinitpanel(panel);
+		return init(create('li', { className: 'controller' }), [panel]);
+	}));
+};
+let shortlink = () => document.querySelector('#sl').value.match(/\/z\/([-\w]+)/)[1];
+Promise.resolve(localStorage.preload ? JSON.parse(localStorage.preload) : getInfo(shortlink())).then((x) => {
+	localStorage.preload = JSON.stringify(x);
+	loadstate(x);
+	document.querySelector('#loading').dataset.show++;
 });
 let actions = {};
 let cache = {};
@@ -138,14 +145,15 @@ let cl_prelude = ((p = 'extern template ', w = 'std::wostream') => {
 	return s + ['wchar_t', 'const wchar_t*'].map(t => p+w+'& std::operator<<('+w+'&, '+t+');\n').join('');
 })();
 document.addEventListener('click', async ({ target: button, panel = button.closest('.controller') }) => {
-	if (!button.matches('button') || !panel) return;
 	document.querySelector('#loading').dataset.show++;
 	try {
+		if (button.matches('#fillinput')) return loadstate(await getInfo(shortlink()));
+		if (!button.matches('button') || !panel) return;
 		let source = document.querySelector('#code').value;
 		if (panel.querySelector('.compiler > [label^="MSVC"] > :checked'))
 			source = source.replace(/^[ \t]*#[ \t]*include[ \t]*<iostream>[ \t]*\n/, '$&'+cl_prelude);
 		const compiler = panel.querySelector('.compiler').value;
-		const userArguments = getOptions(panel);
+		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
 		const compilerOptions = { produceAst: true };
 		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
