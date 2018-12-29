@@ -19,10 +19,10 @@ button, label { font-size: 20px }
 #goptions, .options, .compiler, .libs, p, #fromlink { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 .libs { height: 100px; overflow: scroll }
 .tools > div, #fromlink { display: flex }
-.tools > div > button, #fillinput { flex: none }
-.tools > div > input, #sl { width: 100% }
+.tools > div > button, #fromlink > button { flex: none }
+.tools > div > input, #fromlink > input { width: 100% }
 #lnk { display: block; word-break: break-all; white-space: pre-wrap }
-#loading[data-show="0"] { display: none }
+#output:not([data-loading="0"])::before { content: 'loading...' }
 #output .bold { font-weight: bold }
 #output .red { color: red }
 #output .green { color: green }
@@ -36,10 +36,9 @@ button, label { font-size: 20px }
 <textarea id="code"></textarea>
 <input id="goptions">
 <ul id="container"></ul>
-<div id="fromlink"><input id="sl" value="https://godbolt.org/z/A8eF8K"><button id="fillinput">fill</button></div>
+<div id="fromlink"><input value="https://godbolt.org/z/A8eF8K"><button>fill</button></div>
 <a id="lnk"></a>
-<div id="loading" data-show>loading...</div>
-<output id="output"></output>
+<output id="output" data-loading></output>
 <template id="panel">
 <input class="options">
 <select class="compiler"><option value="gsnapshot"></select>
@@ -62,12 +61,11 @@ button, label { font-size: 20px }
 <details><summary>tools</summary><div class="tools"></div></details>
 </template>
 <script>
-let request = (url, r = {}, type = 'application/json', morehdrs = { 'Content-Type': type, 'Accept': type }) =>
-	fetch('https://godbolt.org/api'+url, { ...r, headers: { ...r.headers, ...morehdrs } });
-let getCompilers = async (use_cache = sessionStorage.compilers) =>
-	JSON.parse(use_cache || (sessionStorage.compilers = await request('/compilers').then(x => x.text())));
-let getInfo = async (s, use_cache = localStorage.preload) =>
-	JSON.parse(use_cache || (localStorage.preload = await request('/shortlinkinfo/'+s).then(x => x.text())));
+let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
+	fetch('https://godbolt.org/api'+url, { ...req, headers: { ...req.headers, ...moreheaders } });
+let cacheGet = async (cache, i, url) => JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text())));
+let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers', '/compilers');
+let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 let init = (node, nodes = []) => {
@@ -95,6 +93,25 @@ let reinitpanel = (panel, select = panel.querySelector('.compiler'), c = compile
 		return s;
 	}));
 };
+let loadstate = (data) => {
+	document.querySelector('#code').value = data.sessions[0].source;
+	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
+		const panel = panel_tmplt.cloneNode(true);
+		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
+		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
+		reinitpanel(panel);
+		return init(create('li', { className: 'controller' }), [panel]);
+	}));
+};
+let shortlink = () => document.querySelector('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
+Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v.groupName || v.group) => {
+	compilers = data.sort((x, y) => x.id.localeCompare(y.id));
+	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
+		init(c, [...new Set(data.map(gN))].map(v => init(create('optgroup', { label: v }), data.filter(
+			e => gN(e) === v).map(e => create('option', { text: e.lang+' : '+e.name, value: e.id })))));
+	loadstate(x);
+	document.querySelector('#output').dataset.loading = 0;
+});
 let syncwithlibs = (options, path, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
 	if (checked) return path.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' -I'+s));
 	rpl(RegExp(` *(${path.map(s => '-I'+s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}) *`, 'g'), ' ');
@@ -106,35 +123,17 @@ let syncwithoptions = (checkbox, path, options, included = p => options.includes
 	if (target.matches('.compiler')) return reinitpanel(panel);
 	if (target.type === 'checkbox' && target.dataset.path)
 		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.path), target.checked);
-	else if (target.matches('.options'))
+	if (target.matches('.options'))
 		for (const checkbox of panel.querySelectorAll('input[data-path]'))
 			syncwithoptions(checkbox, JSON.parse(checkbox.dataset.path), target.value);
 }));
-let loadstate = (data) => {
-	document.querySelector('#code').value = data.sessions[0].source;
-	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
-		const panel = panel_tmplt.cloneNode(true);
-		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
-		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
-		reinitpanel(panel);
-		return init(create('li', { className: 'controller' }), [panel]);
-	}));
-};
-let shortlink = () => document.querySelector('#sl').value.match(/\/z\/([-\w]+)/)[1];
-Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v.groupName || v.group) => {
-	compilers = data.sort((x, y) => x.id.localeCompare(y.id));
-	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
-		init(c, [...new Set(data.map(gN))].map(v => init(create('optgroup', { label: v }), data.filter(
-			e => gN(e) === v).map(e => create('option', { text: e.lang+' : '+e.name, value: e.id })))));
-	loadstate(x);
-	document.querySelector('#loading').dataset.show = 0;
-});
 let actions = {};
 let cache = {};
 document.addEventListener('click', async ({ target: button, panel = button.closest('.controller') }) => {
-	document.querySelector('#loading').dataset.show++;
+	const output = document.querySelector('#output');
+	output.dataset.loading++;
 	try {
-		if (button.matches('#fillinput')) return loadstate(await getInfo(shortlink(), false));
+		if (button.matches('#fromlink > button')) return loadstate(await getInfo(shortlink(), false));
 		if (!button.matches('button') || !panel) return;
 		const source = document.querySelector('#code').value;
 		const compiler = panel.querySelector('.compiler').value;
@@ -156,7 +155,6 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		}
 		const k = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters, tools } });
 		const data = cache[k] || await compile(compiler, k).then(a => a.okToCache ? cache[k] = a : a);
-		const output = document.querySelector('#output');
 		if (button.closest('.tools')) {
 			const { stdout } = data.tools.find(x => x.id === button.name);
 			init(output, stdout.map(t => create('div', { textContent: t.text })));
@@ -167,7 +165,7 @@ document.addEventListener('click', async ({ target: button, panel = button.close
 		const h = output.innerHTML;
 		output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr: button.name }), h);
 	} finally {
-		document.querySelector('#loading').dataset.show--;
+		output.dataset.loading--;
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
@@ -195,36 +193,24 @@ add_action(function strip_ast_output(html, e) {
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
-		function getHTML(range, s = '') {
-			let curidx = range.left;
-			for (const r of range.nested) {
-				const [p, c] = [m.slice(curidx, r.left), m.slice(r.left, curidx = r.right)];
-				if (r.right - r.left - (r.sl+r.sr).length > 30)
-					s += p+make_toggle({ abbr: r.sl+'...'+r.sr, full: getHTML(r), tooltip: c });
-				else
-					s += p+c;
-			}
-			return s + m.slice(curidx, range.right);
-		}
 		try {
-			const symidx = [];
-			for (let i, re = /&lt;|&gt;|\(|\)|\[|\]/g; i = re.exec(m);)
-				symidx.push(i);
-			const stack = [{ left: 0, right: m.length, nested: [] }];
-			const last = (i = 1) => stack[stack.length - i];
-			for (const { 0: str, index } of symidx) {
-				if (['&lt;', '(', '['].includes(str))
-					stack.push({ left: index, sl: str, nested: [] });
-				else {
-					while (str !== '&gt;' && last().sl !== { ')': '(', ']': '[' }[str] && last(2))
-						last(2).nested.push(...stack.pop().nested);
-					if (!last().right && (str !== '&gt;' || last().sl === '&lt;') && last(2))
-						last(2).nested.push({ right: index + str.length, sr: str, ...stack.pop() });
+			let re = /(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
+			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
+				s += m.slice(lastindex, r.index);
+				if (r[1]) stack.push({ ...r, pos: s.length });
+				if (r[2]) {
+					while (r[0] !== '&gt;' && stack[stack.length - 1][1] !== { ')': '(', ']': '[' }[r[0]])
+						stack.pop();
+					if (r[0] !== '&gt;' || stack[stack.length - 1][1] === '&lt;') {
+						const l = stack.pop();
+						const abbr = l[0]+'...';
+						const [full, tooltip] = [s.slice(l.pos), m.slice(l.index, r.index)];
+						if (r.index - l.index - abbr.length > 30)
+							s = s.slice(0, l.pos) + make_toggle({ abbr, full, tooltip });
+					}
 				}
+				if (r[3] === '') return s;
 			}
-			while (last().sl && last(2))
-				last(2).nested.push(...stack.pop().nested);
-			return getHTML(stack[0]);
 		} catch (e) {
 			return m;
 		}
