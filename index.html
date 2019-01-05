@@ -87,7 +87,7 @@ let reinitpanel = (panel, select = panel.querySelector('.compiler'), c = compile
 		const s = init(create('details'), [create('summary', { textContent: name })]);
 		for (const v of Object.values(versions)) {
 			const i = init(create('label'), [create('input', { type: 'checkbox' }), v.version]);
-			i.querySelector('input').dataset.path = JSON.stringify(v.path);
+			i.querySelector('input').dataset.opt = JSON.stringify(v.path.map(s => '-I'+s));
 			s.append(i);
 		}
 		return s;
@@ -112,29 +112,29 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v
 	loadstate(x);
 	document.querySelector('#output').dataset.loading = 0;
 });
-let syncwithlibs = (options, path, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
-	if (checked) return path.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' -I'+s));
-	rpl(RegExp(` *(${path.map(s => '-I'+s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}) *`, 'g'), ' ');
+let syncwithlibs = (options, opts, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
+	if (checked) return opts.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' '+s));
+	rpl(RegExp(` *(${opts.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}) *`, 'g'), ' ');
 };
-let syncwithoptions = (checkbox, path, options, included = p => options.includes(p), all = path.every(included)) =>
-	Object.assign(checkbox, { checked: all, indeterminate: !all && path.some(included) });
-['input', 'change'].forEach(ev => document.addEventListener(ev, ({ target, panel = target.closest('.controller') }) => {
-	if (!panel) return;
+let syncwithoptions = (checkbox, opts, options, included = p => options.includes(p), all = opts.every(included)) =>
+	Object.assign(checkbox, { checked: all, indeterminate: !all && opts.some(included) });
+['input', 'change'].forEach(ev => document.querySelector('#container').addEventListener(ev, ({ target }) => {
+	const panel = target.closest('.controller');
 	if (target.matches('.compiler')) return reinitpanel(panel);
-	if (target.type === 'checkbox' && target.dataset.path)
-		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.path), target.checked);
+	if (target.type === 'checkbox' && target.dataset.opt)
+		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.opt), target.checked);
 	if (target.matches('.options'))
-		for (const checkbox of panel.querySelectorAll('input[data-path]'))
-			syncwithoptions(checkbox, JSON.parse(checkbox.dataset.path), target.value);
+		for (const checkbox of panel.querySelectorAll('input[data-opt]'))
+			syncwithoptions(checkbox, JSON.parse(checkbox.dataset.opt), target.value);
 }));
 let actions = {};
 let cache = {};
-document.addEventListener('click', async ({ target: button, panel = button.closest('.controller') }) => {
-	const output = document.querySelector('#output');
+document.addEventListener('click', async ({ target: button, output = document.querySelector('#output') }) => {
+	if (!button.matches('button')) return;
 	output.dataset.loading++;
 	try {
 		if (button.matches('#fromlink > button')) return loadstate(await getInfo(shortlink(), false));
-		if (!button.matches('button') || !panel) return;
+		const panel = button.closest('.controller');
 		const source = document.querySelector('#code').value;
 		const compiler = panel.querySelector('.compiler').value;
 		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
@@ -180,8 +180,8 @@ add_action(function colorize(html, e) {
 });
 add_action(function shorten_filename(html, e) {
 	const f = [
-		'/opt/compiler-explorer/(?:libs/(?:.*?/include/(?=[^/]*?/))?|.*?/include/c\\+\\+/[^/]*?/)',
-		'/tmp/compiler-explorer-compiler.*?/',
+		'/opt/compiler-explorer/(?:libs/(?:\\S*?/include/(?=[^\\s/]*?/))?|\\S*?/include/c\\+\\+/[^\\s/]*?/)',
+		'/tmp/compiler-explorer-compiler\\S*?/',
 	];
 	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({ abbr: '.../', full: m, tooltip: m }));
 });
