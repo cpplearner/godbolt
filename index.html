@@ -38,7 +38,7 @@ button, label { font-size: 20px }
 <ul id="container"></ul>
 <div id="fromlink"><input value="https://godbolt.org/z/A8eF8K"><button>fill</button></div>
 <a id="lnk"></a>
-<output id="output" data-loading></output>
+<output id="output" data-loading="1"></output>
 <template id="panel">
 <input class="options">
 <select class="compiler"><option value="gsnapshot"></select>
@@ -93,8 +93,8 @@ let reinitpanel = (panel, select = panel.querySelector('.compiler'), c = compile
 		return s;
 	}));
 };
-let loadstate = (data) => {
-	document.querySelector('#code').value = data.sessions[0].source;
+let loadstate = (data, startup) => {
+	if (!startup) document.querySelector('#code').value = data.sessions[0].source;
 	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
 		const panel = panel_tmplt.cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
@@ -109,8 +109,8 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v
 	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
 		init(c, [...new Set(data.map(gN))].map(v => init(create('optgroup', { label: v }), data.filter(
 			e => gN(e) === v).map(e => create('option', { text: e.lang+' : '+e.name, value: e.id })))));
-	loadstate(x);
-	document.querySelector('#output').dataset.loading = 0;
+	loadstate(x, true);
+	document.querySelector('#output').dataset.loading--;
 });
 let syncwithlibs = (options, opts, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
 	if (checked) return opts.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' '+s));
@@ -138,10 +138,10 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 		const source = document.querySelector('#code').value;
 		const compiler = panel.querySelector('.compiler').value;
 		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
-		const compilerOptions = { produceAst: true };
+		const compilerOptions = { produceAst: button.name === 'ast' };
 		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		const tools = [...panel.querySelectorAll('.tools button')].map(x => ({ id: x.name, args: x.nextSibling.value }));
+		const tools = [button.closest('.tools') ? { id: button.name, args: button.nextSibling.value } : {}];
 		const lnk = Object.assign(init(document.querySelector('#lnk')), { href: '' });
 		if (button.name === 'makelink') {
 			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
