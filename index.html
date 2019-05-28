@@ -64,6 +64,7 @@ button, label { font-size: 20px }
 let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
 	fetch('https://godbolt.org/api'+url, { ...req, headers: { ...req.headers, ...moreheaders } });
 let cacheGet = async (cache, i, url) => JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text())));
+let storedCompilers = () => JSON.parse(sessionStorage.compilers) || [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers', '/compilers');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
@@ -77,21 +78,17 @@ let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span 
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 let panel_tmplt = document.querySelector('#panel').content;
 document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
-let compilers = [];
-let reinitpanel = (panel, select = panel.querySelector('.compiler'), c = compilers.find(x => x.id === select.value)) => {
+let reinitpanel = (panel, s = panel.querySelector('.compiler'), c = storedCompilers().find(x => x.id === s.value)) => {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	const t = Object.entries(c.tools || {}).map(x => create('button', { name: x[1].tool.id, textContent: x[0] }));
-	init(panel.querySelector('.tools'), t.map(x => init(create('div'), [x, create('input')])));
-	init(panel.querySelector('.libs'), Object.entries(c.libs || {}).map(([id, { name, url, description, versions }]) => {
-		const s = init(create('details'), [create('summary', { textContent: name })]);
-		for (const v of Object.values(versions)) {
-			const i = init(create('label'), [create('input', { type: 'checkbox' }), v.version]);
-			i.querySelector('input').dataset.opt = JSON.stringify(v.path.map(s => '-I'+s));
-			s.append(i);
-		}
-		return s;
-	}));
+	init(panel.querySelector('.tools'), Object.keys(c.tools || {}).map(id =>
+		init(create('div'), [init(create('button', { name: id }), [id]), create('input')])));
+	init(panel.querySelector('.libs'), Object.values(c.libs || {}).map(lib =>
+		init(create('details'), [init(create('summary'), [lib.name]), ...Object.values(lib.versions).map(v => {
+			const input = create('input', { type: 'checkbox' });
+			input.dataset.opt = JSON.stringify(v.path.map(s => '-I'+s));
+			return init(create('label'), [input, v.version]);
+		})])));
 };
 let loadstate = (data, startup) => {
 	if (!startup) document.querySelector('#code').value = data.sessions[0].source;
@@ -105,7 +102,7 @@ let loadstate = (data, startup) => {
 };
 let shortlink = () => document.querySelector('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v.groupName || v.group) => {
-	compilers = data.sort((x, y) => x.id.localeCompare(y.id));
+	data.sort((x, y) => x.id.localeCompare(y.id));
 	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
 		init(c, [...new Set(data.map(gN))].map(v => init(create('optgroup', { label: v }), data.filter(
 			e => gN(e) === v).map(e => create('option', { text: e.lang+' : '+e.name, value: e.id })))));
@@ -153,15 +150,22 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 			lnk.textContent = lnk.href = 'https://godbolt.org/#'+s;
 			return;
 		}
-		const k = JSON.stringify({ source, compiler, options: { userArguments, compilerOptions, filters, tools } });
-		const data = cache[k] || await compile(compiler, k).then(a => a.okToCache ? cache[k] = a : a);
-		if (button.closest('.tools')) {
-			const { stdout } = data.tools.find(x => x.id === button.name);
-			init(output, stdout.map(t => create('div', { textContent: t.text })));
-		} else if (button.name === 'ast')
-			init(output, [create('div', { textContent: data.astOutput })]);
+		const k = JSON.stringify({ source, compiler, userArguments, filters });
+		const findtool = () => cache[k].tools.find(x => x.id === button.name);
+		const data = cache[k] || { tools: [] };
+		if (!cache[k] || button.name === 'ast' && !data.astOutput || button.closest('.tools') && !findtool()) {
+			const options = { userArguments, compilerOptions, filters, tools };
+			const d = await compile(compiler, JSON.stringify({ source, compiler, options }));
+			if (d.okToCache) cache[k] = { ...data, ...d, tools: [...data.tools, ...d.tools] };
+		}
+		if (button.closest('.tools'))
+			init(output, findtool().stdout.map(t => init(create('div'), [t.text])));
+		else if (button.name === 'ast')
+			init(output, [init(create('div'), [cache[k].astOutput])]);
+		else if (filters.execute)
+			init(output, cache[k].execResult[button.name].map(t => init(create('div'), [t.text])));
 		else
-			init(output, data[button.name].map(t => create('div', { textContent: t.text })));
+			init(output, cache[k][button.name].map(t => init(create('div'), [t.text])));
 		const h = output.innerHTML;
 		output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr: button.name }), h);
 	} finally {
