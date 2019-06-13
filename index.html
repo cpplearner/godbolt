@@ -18,9 +18,9 @@ button, label { font-size: 20px }
 .controller label { white-space: nowrap }
 #goptions, .options, .compiler, .libs, p, #fromlink { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
 .libs { height: 100px; overflow: scroll }
-.tools > div, #fromlink { display: flex }
-.tools > div > button, #fromlink > button { flex: none }
-.tools > div > input, #fromlink > input { width: 100% }
+#fromlink { display: flex }
+#fromlink > button { flex: none }
+#fromlink > input { width: 100% }
 #lnk { display: block; word-break: break-all; white-space: pre-wrap }
 #output:not([data-loading="0"])::before { content: 'loading...' }
 #output .bold { font-weight: bold }
@@ -58,7 +58,6 @@ button, label { font-size: 20px }
 <button name="stdout">stdout</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
 <button name="makelink">link</button>
-<details><summary>tools</summary><div class="tools"></div></details>
 </template>
 <script>
 let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
@@ -78,11 +77,9 @@ let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span 
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 let panel_tmplt = document.querySelector('#panel').content;
 document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
-let reinitpanel = (panel, s = panel.querySelector('.compiler'), c = storedCompilers().find(x => x.id === s.value)) => {
+let reinitpanel = (panel, id, c = storedCompilers().find(x => x.id === id)) => {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	init(panel.querySelector('.tools'), Object.keys(c.tools || {}).map(id =>
-		init(create('div'), [init(create('button', { name: id }), [id]), create('input')])));
 	init(panel.querySelector('.libs'), Object.values(c.libs || {}).map(lib =>
 		init(create('details'), [init(create('summary'), [lib.name]), ...Object.values(lib.versions).map(v => {
 			const input = create('input', { type: 'checkbox' });
@@ -96,7 +93,7 @@ let loadstate = (data, startup) => {
 		const panel = panel_tmplt.cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
-		reinitpanel(panel);
+		reinitpanel(panel, c.id);
 		return init(create('li', { className: 'controller' }), [panel]);
 	}));
 };
@@ -117,7 +114,7 @@ let syncwithoptions = (checkbox, opts, options, included = p => options.includes
 	Object.assign(checkbox, { checked: all, indeterminate: !all && opts.some(included) });
 ['input', 'change'].forEach(ev => document.querySelector('#container').addEventListener(ev, ({ target }) => {
 	const panel = target.closest('.controller');
-	if (target.matches('.compiler')) return reinitpanel(panel);
+	if (target.matches('.compiler')) return reinitpanel(panel, target.value);
 	if (target.type === 'checkbox' && target.dataset.opt)
 		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.opt), target.checked);
 	if (target.matches('.options'))
@@ -138,7 +135,6 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 		const compilerOptions = { produceAst: button.name === 'ast' };
 		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
-		const tools = [button.closest('.tools') ? { id: button.name, args: button.nextSibling.value } : {}];
 		const lnk = Object.assign(init(document.querySelector('#lnk')), { href: '' });
 		if (button.name === 'makelink') {
 			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
@@ -151,16 +147,12 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 			return;
 		}
 		const k = JSON.stringify({ source, compiler, userArguments, filters });
-		const findtool = () => cache[k].tools.find(x => x.id === button.name);
-		const data = cache[k] || { tools: [] };
-		if (!cache[k] || button.name === 'ast' && !data.astOutput || button.closest('.tools') && !findtool()) {
-			const options = { userArguments, compilerOptions, filters, tools };
+		if (!cache[k] || button.name === 'ast' && !cache[k].astOutput) {
+			const options = { userArguments, compilerOptions, filters };
 			const d = await compile(compiler, JSON.stringify({ source, compiler, options }));
-			if (d.okToCache) cache[k] = { ...data, ...d, tools: [...data.tools, ...d.tools] };
+			if (d.okToCache) cache[k] = { ...cache[k], ...d };
 		}
-		if (button.closest('.tools'))
-			init(output, findtool().stdout.map(t => init(create('div'), [t.text])));
-		else if (button.name === 'ast')
+		if (button.name === 'ast')
 			init(output, [init(create('div'), [cache[k].astOutput])]);
 		else if (filters.execute)
 			init(output, cache[k].execResult[button.name].map(t => init(create('div'), [t.text])));
