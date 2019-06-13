@@ -44,7 +44,7 @@ button, label { font-size: 20px }
 <select class="compiler"><option value="gsnapshot"></select>
 <details><summary>include libs</summary><div class="libs"></div></details>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
-<label hidden><input type=checkbox name="execute">execute</label>
+<label><input type=checkbox name="execute" data-enableif="supportsExecute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
 <label><input type=checkbox name="libraryCode" data-enableif="supportsLibraryCodeFilter" checked>libraryCode</label>
 <label><input type=checkbox name="directives" checked>directives</label>
