@@ -17,7 +17,6 @@ button, label { font-size: 20px }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
 #goptions, .options, .compiler, .libs, p, #fromlink { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
-.libs { height: 100px; overflow: scroll }
 #fromlink { display: flex }
 #fromlink > button { flex: none }
 #fromlink > input { width: 100% }
@@ -42,7 +41,7 @@ button, label { font-size: 20px }
 <template id="panel">
 <input class="options">
 <select class="compiler"><option value="gsnapshot"></select>
-<details><summary>include libs</summary><div class="libs"></div></details>
+<details><summary>include libs</summary><select class="libs" multiple></select></details>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label><input type=checkbox name="execute" data-enableif="supportsExecute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -68,10 +67,12 @@ let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compiler
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
-let init = (node, nodes = []) => {
+function init(node, nodes = []) {
 	Object.assign(node, { textContent: '' }).append(...nodes);
 	return node;
-};
+}
+let initselect = (parent, f, groups, p) =>
+	init(parent, groups.map(g => init(create('optgroup', { label: g }), f(g).map(t => create('option', p(t))))));
 let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
 	+abbr+'</span><span class="full">'+full+'</span></span>';
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
@@ -80,12 +81,9 @@ document.querySelector('#container').append(init(create('li', { className: 'cont
 let reinitpanel = (panel, id, c = storedCompilers().find(x => x.id === id)) => {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	init(panel.querySelector('.libs'), Object.values(c.libs || {}).map(lib =>
-		init(create('details'), [init(create('summary'), [lib.name]), ...Object.values(lib.versions).map(v => {
-			const input = create('input', { type: 'checkbox' });
-			input.dataset.opt = JSON.stringify(v.path.map(s => '-I'+s));
-			return init(create('label'), [input, v.version]);
-		})])));
+	const f = group => Object.values((Object.values(c.libs).find(x => x.name === group)).versions);
+	const prop = x => ({ text: x.version, value: JSON.stringify(x.path.map(s => '-I'+s)) });
+	initselect(panel.querySelector('.libs'), f, Object.values(c.libs || {}).map(x => x.name), prop);
 };
 let loadstate = (data, startup) => {
 	if (!startup) document.querySelector('#code').value = data.sessions[0].source;
@@ -100,26 +98,25 @@ let loadstate = (data, startup) => {
 let shortlink = () => document.querySelector('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v.groupName || v.group) => {
 	data.sort((x, y) => x.id.localeCompare(y.id));
+	const f = group => data.filter(x => gN(x) === group);
 	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
-		init(c, [...new Set(data.map(gN))].map(v => init(create('optgroup', { label: v }), data.filter(
-			e => gN(e) === v).map(e => create('option', { text: e.lang+' : '+e.name, value: e.id })))));
+		initselect(c, f, [...new Set(data.map(gN))], x => ({ text: x.lang+' : '+x.name, value: x.id }));
 	loadstate(x, true);
 	document.querySelector('#output').dataset.loading--;
 });
-let syncwithlibs = (options, opts, checked, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
-	if (checked) return opts.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' '+s));
+let syncwithlibs = (options, opts, selected, rpl = (p, r) => options.value = options.value.replace(p, r)) => {
+	if (selected) return opts.forEach(s => !options.value.includes(s) && rpl(/ *$/, ' '+s));
 	rpl(RegExp(` *(${opts.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}) *`, 'g'), ' ');
 };
-let syncwithoptions = (checkbox, opts, options, included = p => options.includes(p), all = opts.every(included)) =>
-	Object.assign(checkbox, { checked: all, indeterminate: !all && opts.some(included) });
+let syncwithoptions = (el, ps, ov, included = p => ov.includes(p), all = ps.every(included)) => el.selected = all;
 ['input', 'change'].forEach(ev => document.querySelector('#container').addEventListener(ev, ({ target }) => {
 	const panel = target.closest('.controller');
 	if (target.matches('.compiler')) return reinitpanel(panel, target.value);
-	if (target.type === 'checkbox' && target.dataset.opt)
-		return syncwithlibs(panel.querySelector('.options'), JSON.parse(target.dataset.opt), target.checked);
-	if (target.matches('.options'))
-		for (const checkbox of panel.querySelectorAll('input[data-opt]'))
-			syncwithoptions(checkbox, JSON.parse(checkbox.dataset.opt), target.value);
+	for (const option of panel.querySelectorAll('.libs option'))
+		if (target.matches('.libs'))
+			syncwithlibs(panel.querySelector('.options'), JSON.parse(option.value), option.selected);
+		else if (target.matches('.options'))
+			syncwithoptions(option, JSON.parse(option.value), target.value);
 }));
 let actions = {};
 let cache = {};
