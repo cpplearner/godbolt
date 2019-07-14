@@ -4,44 +4,47 @@
 <title>Compiler Explorer Tool</title>
 <style>
 body { overflow: scroll }
-button, label { font-size: 20px }
+button, label, summary { font-size: 18px }
 .toggle { cursor: pointer }
 .toggle > .full { display: none }
 .toggle.full > .abbr { display: none }
 .toggle.full > .full { display: unset }
 #expand { position: absolute; top: 9px; right: 10px }
 #expand.full + #code { height: calc(100vh - 50px) }
-#code, #output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
+#code, output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
 #code { width: calc(100vw - 42px); height: calc(100vh - 300px); margin: 1px }
 #container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
-#goptions, .options, .compiler, .libs, p, #fromlink { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+.input { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
+details:not([open]) { display: inline-block }
 #fromlink { display: flex }
 #fromlink > button { flex: none }
 #fromlink > input { width: 100% }
 #lnk { display: block; word-break: break-all; white-space: pre-wrap }
-#output:not([data-loading="0"])::before { content: 'loading...' }
-#output .bold { font-weight: bold }
-#output .red { color: red }
-#output .green { color: green }
-#output .yellow { color: orange }
-#output .blue { color: blue }
-#output .magenta { color: magenta }
-#output .cyan { color: darkcyan }
-#output .bold.green:only-child { font-weight: normal }
+#output:not([data-loading="0"])::before { content: 'loading...'; display: block }
+#stdout:not(:empty)::before, #stderr:not(:empty)::before { content: attr(id) ':'; font-size: x-small }
+output .bold { font-weight: bold }
+output .red { color: red }
+output .green { color: green }
+output .yellow { color: orange }
+output .blue { color: blue }
+output .magenta { color: magenta }
+output .cyan { color: darkcyan }
+output .bold.green:only-child { font-weight: normal }
 </style>
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <textarea id="code"></textarea>
-<input id="goptions">
+<input id="goptions" class="input">
 <ul id="container"></ul>
-<div id="fromlink"><input value="https://godbolt.org/z/A8eF8K"><button>fill</button></div>
+<div id="fromlink" class="input"><input value="https://godbolt.org/z/A8eF8K"><button>fill</button></div>
 <a id="lnk"></a>
-<output id="output" data-loading="1"></output>
+<output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <template id="panel">
-<input class="options">
-<select class="compiler"><option value="gsnapshot"></select>
-<details><summary>include libs</summary><select class="libs" multiple></select></details>
+<input class="input options">
+<select class="input compiler"><option value="gsnapshot"></select>
+<details><summary>include libs</summary><select class="input libs" multiple></select></details>
+<details class="filters" open><summary>options</summary>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label><input type=checkbox name="execute" data-enableif="supportsExecute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -51,10 +54,14 @@ button, label { font-size: 20px }
 <label><input type=checkbox name="trim" checked>trim</label>
 <label><input type=checkbox name="intel" data-enableif="supportsIntel" checked>intel</label>
 <label><input type=checkbox name="demangle" data-enableif="supportsDemangle" checked>demangle</label>
-<p>
+</details>
+<details><summary>execute</summary>
+<input class="input exeargs">
+<textarea class="input stdin" placeholder="stdin"></textarea>
+</details>
+<br>
 <button name="asm">assembly</button>
-<button name="stderr">stderr</button>
-<button name="stdout">stdout</button>
+<button name="output">output</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
 <button name="makelink">link</button>
 </template>
@@ -78,14 +85,14 @@ let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span 
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 let panel_tmplt = document.querySelector('#panel').content;
 document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
-let reinitpanel = (panel, id, c = storedCompilers().find(x => x.id === id)) => {
+function reinitpanel(panel, id, c = storedCompilers().find(x => x.id === id)) {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
 	const f = group => Object.values((Object.values(c.libs).find(x => x.name === group)).versions);
 	const prop = x => ({ text: x.version, value: JSON.stringify(x.path.map(s => '-I'+s)) });
 	initselect(panel.querySelector('.libs'), f, Object.values(c.libs || {}).map(x => x.name), prop);
 };
-let loadstate = (data, startup) => {
+function loadstate(data, startup) {
 	if (!startup) document.querySelector('#code').value = data.sessions[0].source;
 	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
 		const panel = panel_tmplt.cloneNode(true);
@@ -120,6 +127,11 @@ let syncwithoptions = (el, ps, ov, included = p => ov.includes(p), all = ps.ever
 }));
 let actions = {};
 let cache = {};
+function out(output, attr, data) {
+	const h = init(output, data.map(t => init(create('div'), [t.text]))).innerHTML;
+	const s = Object.values(actions).reduce((h, f) => f(h, { attr }), h);
+	if (h !== s) output.innerHTML = s;
+}
 document.addEventListener('click', async ({ target: button, output = document.querySelector('#output') }) => {
 	if (!button.matches('button')) return;
 	output.dataset.loading++;
@@ -130,8 +142,10 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 		const compiler = panel.querySelector('.compiler').value;
 		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
 		const compilerOptions = { produceAst: button.name === 'ast' };
-		const checkboxes = [...panel.querySelectorAll(':scope > label > input[type=checkbox]')];
+		const checkboxes = [...panel.querySelectorAll('.filters input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
+		const [args, stdin] = ['.exeargs', '.stdin'].map(x => panel.querySelector(x).value);
+		const executeParameters = { args, stdin };
 		const lnk = Object.assign(init(document.querySelector('#lnk')), { href: '' });
 		if (button.name === 'makelink') {
 			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
@@ -143,20 +157,20 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 			lnk.textContent = lnk.href = 'https://godbolt.org/#'+s;
 			return;
 		}
-		const k = JSON.stringify({ source, compiler, userArguments, filters });
+		const k = JSON.stringify({ source, compiler, userArguments, filters, executeParameters });
 		if (!cache[k] || button.name === 'ast' && !cache[k].astOutput) {
-			const options = { userArguments, compilerOptions, filters };
+			const options = { userArguments, compilerOptions, filters, executeParameters };
 			const d = await compile(compiler, JSON.stringify({ source, compiler, options }));
 			if (d.okToCache) cache[k] = { ...cache[k], ...d };
 		}
+		const [output, stdout, stderr] = [...document.querySelectorAll('output')].map(output => init(output));
 		if (button.name === 'ast')
-			init(output, [init(create('div'), [cache[k].astOutput])]);
-		else if (filters.execute)
-			init(output, cache[k].execResult[button.name].map(t => init(create('div'), [t.text])));
+			out(output, 'ast', [{ text: cache[k].astOutput }]);
+		else if (button.name === 'asm')
+			out(output, 'asm', cache[k].asm);
 		else
-			init(output, cache[k][button.name].map(t => init(create('div'), [t.text])));
-		const h = output.innerHTML;
-		output.innerHTML = Object.values(actions).reduce((h, f) => f(h, { output, attr: button.name }), h);
+			for (const o of [stdout, stderr])
+				out(o, o.id, filters.execute ? cache[k].execResult[o.id] : cache[k][o.id]);
 	} finally {
 		output.dataset.loading--;
 	}
