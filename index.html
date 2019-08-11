@@ -37,7 +37,7 @@ output .bold.green:only-child { font-weight: normal }
 <textarea id="code"></textarea>
 <input id="goptions" class="input">
 <ul id="container"></ul>
-<div id="fromlink" class="input"><input value="https://godbolt.org/z/A8eF8K"><button>fill</button></div>
+<div id="fromlink" class="input"><input value="https://godbolt.org/z/v6uzq3"><button>fill</button></div>
 <a id="lnk"></a>
 <output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <template id="panel">
@@ -127,12 +127,12 @@ let syncwithoptions = (el, ps, ov, included = p => ov.includes(p), all = ps.ever
 }));
 let actions = {};
 let cache = {};
-function out(output, attr, data) {
+function display(output, attr, data) {
 	const h = init(output, data.map(t => init(create('div'), [t.text]))).innerHTML;
 	const s = Object.values(actions).reduce((h, f) => f(h, { attr }), h);
 	if (h !== s) output.innerHTML = s;
 }
-document.addEventListener('click', async ({ target: button, output = document.querySelector('#output') }) => {
+document.addEventListener('click', async ({ target: button }) => {
 	if (!button.matches('button')) return;
 	output.dataset.loading++;
 	try {
@@ -163,14 +163,17 @@ document.addEventListener('click', async ({ target: button, output = document.qu
 			const d = await compile(compiler, JSON.stringify({ source, compiler, options }));
 			if (d.okToCache) cache[k] = { ...cache[k], ...d };
 		}
-		const [output, stdout, stderr] = [...document.querySelectorAll('output')].map(output => init(output));
+		const [output, out, err] = [...document.querySelectorAll('output')].map(output => init(output));
 		if (button.name === 'ast')
-			out(output, 'ast', [{ text: cache[k].astOutput }]);
+			display(output, 'ast', [{ text: cache[k].astOutput }]);
 		else if (button.name === 'asm')
-			out(output, 'asm', cache[k].asm);
+			display(output, 'asm', cache[k].asm);
+		else if (!filters.execute)
+			[out, err].map(o => display(o, '', cache[k][o.id]));
+		else if (!cache[k].execResult.didExecute)
+			[out, err].map(o => display(o, '', cache[k].execResult.buildResult[o.id]));
 		else
-			for (const o of [stdout, stderr])
-				out(o, o.id, filters.execute ? cache[k].execResult[o.id] : cache[k][o.id]);
+			[out, err].map(o => display(o, '', cache[k].execResult[o.id]));
 	} finally {
 		output.dataset.loading--;
 	}
@@ -197,6 +200,9 @@ add_action(function strip_ast_output(html, e) {
 	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
 	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ [^]*?\n(?=<[^>]+>[|`]-)/g;
 	return html.replace(raddress, '').replace(rimp, '');
+});
+add_action(function shorten_stdstring(html, e) {
+	return html.replace(/__\w+::basic_string&lt;char&gt;(\s*(?=&gt;))?/g, 'string');
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
