@@ -17,7 +17,6 @@ button, label, summary { font-size: 18px }
 .controller { display: table-cell }
 .controller label { white-space: nowrap }
 .input { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
-details:not([open]) { display: inline-block }
 #fromlink { display: flex }
 #fromlink > button { flex: none }
 #fromlink > input { width: 100% }
@@ -59,7 +58,6 @@ output .bold.green:only-child { font-weight: normal }
 <input class="input exeargs">
 <textarea class="input stdin" placeholder="stdin"></textarea>
 </details>
-<br>
 <button name="asm">assembly</button>
 <button name="output">output</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
@@ -201,7 +199,7 @@ add_action(function shorten_libstdcxx_names(html, e) {
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
 		try {
-			let re = /(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
+			let re = /&lt;&lt;|&gt;&gt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
 			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
 				s += m.slice(lastindex, r.index);
 				if (r[1]) stack.push({ ...r, pos: s.length });
@@ -210,8 +208,8 @@ add_action(function shorten_decl(html, e) {
 						stack.pop();
 					if (r[0] !== '&gt;' || stack[stack.length - 1][1] === '&lt;') {
 						const l = stack.pop();
-						const abbr = l[0]+'...';
-						const [full, tooltip] = [s.slice(l.pos), m.slice(l.index, r.index)];
+						const [abbr, full] = [l[0]+'...', s.slice(l.pos)];
+						const tooltip = m.slice(l.index + l[0].length, r.index);
 						if (r.index - l.index - abbr.length > 30)
 							s = s.slice(0, l.pos) + make_toggle({ abbr, full, tooltip });
 					}
