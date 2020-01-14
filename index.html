@@ -66,9 +66,12 @@ output .bold.green:only-child { font-weight: normal }
 <script>
 let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
 	fetch('https://godbolt.org/api'+url, { ...req, headers: { ...req.headers, ...moreheaders } });
-let cacheGet = async (cache, i, url) => JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text())));
-let storedCompilers = () => JSON.parse(sessionStorage.compilers) || [];
-let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers', '/compilers');
+let cacheGet = async (cache, i, url, f = undefined) =>
+	JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text()).then(f)));
+let stored = (s) => JSON.parse(sessionStorage[s]) || [];
+let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers', '/compilers',
+	x => JSON.stringify(JSON.parse(x).map(x => ({ ...x, libs: x.remote ? x.libs : undefined }))));
+let getLibs = (use_cache = sessionStorage) => cacheGet(use_cache, 'libs', '/libraries');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
@@ -83,16 +86,16 @@ let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span 
 document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
 let panel_tmplt = document.querySelector('#panel').content;
 document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
-function reinitpanel(s, panel = s.closest('.controller'), c = storedCompilers().find(x => x.id === s.value)) {
+function reinitpanel(s, panel = s.closest('.controller'), c = stored('compilers').find(x => x.id === s.value)) {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	const libs = panel.querySelector('.libs');
+	const libs = c.libs || stored('libs')[c.lang] || {};
 	const f = group => {
-		const [id, info] = Object.entries(c.libs).find(x => x[1].name === group);
+		const [id, info] = Object.entries(libs).find(x => x[1].name === group);
 		return Object.entries(info.versions).map(x => ({ ...x, id }));
 	};
 	const prop = x => ({ text: x[1].version, value: JSON.stringify({ id: x.id, version: x[0] }) });
-	initselect(panel.querySelector('.libs'), f, Object.values(c.libs || {}).map(x => x.name), prop);
+	initselect(panel.querySelector('.libs'), f, Object.values(libs).map(x => x.name), prop);
 }
 document.querySelector('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
 function loadstate(data, startup) {
@@ -106,7 +109,7 @@ function loadstate(data, startup) {
 	}));
 }
 let shortlink = () => document.querySelector('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
-Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data], gN = v => v.groupName || v.group) => {
+Promise.all([getInfo(shortlink()), getCompilers(), getLibs()]).then(([x, data], gN = v => v.groupName || v.group) => {
 	data.sort((x, y) => x.id.localeCompare(y.id));
 	const f = group => data.filter(x => gN(x) === group);
 	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
@@ -191,15 +194,16 @@ add_action(function strip_ast_output(html, e) {
 	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ [^]*?\n(?=<[^>]+>[|`]-)/g;
 	return html.replace(raddress, '').replace(rimp, '');
 });
-add_action(function shorten_libstdcxx_names(html, e) {
-	const rstring = '__\\w+::basic_string&lt;(char)(, std::char_traits&lt;\\1&gt;, std::allocator&lt;\\1&gt; )?&gt;'
+add_action(function shorten_std_names(html, e) {
+	const rstring = '\\bstd::basic_string&lt;(char)(, std::char_traits&lt;\\1&gt;, std::allocator&lt;\\1&gt; )?&gt;'
 		+ '( (?=&gt;))?';
-	return html.replace(RegExp(rstring, 'g'), 'string');
+	return html.replace(/\bstd::__\w+::/g, 'std::')
+                .replace(RegExp(rstring, 'g'), 'string');
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
 		try {
-			let re = /&lt;&lt;|&gt;&gt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
+			let re = /&lt;&lt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
 			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
 				s += m.slice(lastindex, r.index);
 				if (r[1]) stack.push({ ...r, pos: s.length });
