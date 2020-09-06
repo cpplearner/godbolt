@@ -20,7 +20,6 @@ button, label, summary { font-size: 18px }
 #fromlink { display: flex }
 #fromlink > button { flex: none }
 #fromlink > input { width: 100% }
-#lnk { display: block; word-break: break-all; white-space: pre-wrap }
 #output:not([data-loading="0"])::before { content: 'loading...'; display: block }
 #stdout:not(:empty)::before, #stderr:not(:empty)::before { content: attr(id) ':'; font-size: x-small }
 output .bold { font-weight: bold }
@@ -37,7 +36,6 @@ output .bold.green:only-child { font-weight: normal }
 <input id="goptions" class="input">
 <ul id="container"></ul>
 <div id="fromlink" class="input"><input value="https://godbolt.org/z/v6uzq3"><button>fill</button></div>
-<a id="lnk"></a>
 <output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <template id="panel">
 <input class="input options">
@@ -61,7 +59,6 @@ output .bold.green:only-child { font-weight: normal }
 <button name="asm">assembly</button>
 <button name="output">output</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
-<button name="makelink">link</button>
 </template>
 <script>
 let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
@@ -69,7 +66,9 @@ let request = (url, req = {}, type = 'application/json', moreheaders = { 'Conten
 let cacheGet = async (cache, i, url, f = undefined) =>
 	JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text()).then(f)));
 let stored = (s) => JSON.parse(sessionStorage[s]) || [];
-let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers', '/compilers',
+let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
+	'/compilers?fields=id,name,lang,group,groupName,libs,remote,tools,' +
+	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView',
 	x => JSON.stringify(JSON.parse(x).map(x => ({ ...x, libs: x.remote ? x.libs : undefined }))));
 let getLibs = (use_cache = sessionStorage) => cacheGet(use_cache, 'libs', '/libraries');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
@@ -89,7 +88,7 @@ document.querySelector('#container').append(init(create('li', { className: 'cont
 function reinitpanel(s, panel = s.closest('.controller'), c = stored('compilers').find(x => x.id === s.value)) {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	const libs = c.libs || stored('libs')[c.lang] || {};
+	const libs = c.libs || stored('libs')[c.lang];
 	const f = group => {
 		const [id, info] = Object.entries(libs).find(x => x[1].name === group);
 		return Object.entries(info.versions).map(x => ({ ...x, id }));
@@ -139,17 +138,6 @@ document.addEventListener('click', async ({ target: button }) => {
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
 		const [args, stdin] = ['.exeargs', '.stdin'].map(x => panel.querySelector(x).value);
 		const executeParameters = { args, stdin };
-		const lnk = Object.assign(init(document.querySelector('#lnk')), { href: '' });
-		if (button.name === 'makelink') {
-			const esc = (s) => `'${s.replace(/['!]/g, '!$&')}'`;
-			const flt = `(${checkboxes.map(e => `${e.name}:'${+!e.checked}'`)})`;
-			let s = `g:!((g:!((g:!((h:codeEditor,i:(j:1,source:${esc(source)}),l:'5')),l:'4'),(g:!((${
-			`h:compiler,i:(compiler:${compiler},filters:${flt},options:${esc(userArguments)},source:1)`
-			},l:'5')),l:'4'),(g:!((h:output,i:(compiler:1,editor:1),l:'5')),l:'4')),l:'2')),version:4`;
-			s = encodeURIComponent(s).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%20/g, '+');
-			lnk.textContent = lnk.href = 'https://godbolt.org/#'+s;
-			return;
-		}
 		const k = JSON.stringify({ source, compiler, userArguments, filters, libraries, executeParameters });
 		if (!cache[k] || button.name === 'ast' && !cache[k].astOutput) {
 			const options = { userArguments, compilerOptions, filters, libraries, executeParameters };
