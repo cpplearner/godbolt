@@ -166,8 +166,12 @@ add_action(function colorize(html, e) {
 	const classmap = {
 		0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
 	};
-	return replace(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B|$)/mg,
+	return replace(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B\[|$)/mg,
 		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
+});
+add_action(function hyperlink(html, e) {
+	if (e.attr === 'asm') return html;
+	return replace(html, /\x1B\]8;;(.*?)\x07(.*?)\x1B]8;;\x07/g, (m, p1, p2) => '<a href="'+p1+'">'+p2+'</a>');
 });
 add_action(function shorten_filename(html, e) {
 	const f = [
