@@ -35,7 +35,7 @@ output .bold.green:only-child { font-weight: normal }
 <textarea id="code"></textarea>
 <input id="goptions" class="input">
 <ul id="container"></ul>
-<div id="fromlink" class="input"><input value="https://godbolt.org/z/v6uzq3"><button>fill</button></div>
+<div id="fromlink" class="input"><input value="https://godbolt.org/z/ovv6aq8x5"><button>fill</button></div>
 <output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <template id="panel">
 <input class="input options">
@@ -132,7 +132,7 @@ document.addEventListener('click', async ({ target: button }) => {
 		const source = document.querySelector('#code').value;
 		const compiler = panel.querySelector('.compiler').value;
 		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
-		const compilerOptions = { produceAst: button.name === 'ast' };
+		const compilerOptions = { produceAst: button.name === 'ast', skipPopArgs: true };
 		const libraries = [...panel.querySelector('.libs').selectedOptions].map(x => JSON.parse(x.value));
 		const checkboxes = [...panel.querySelectorAll('.filters input[type=checkbox]')];
 		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
@@ -189,8 +189,7 @@ add_action(function strip_ast_output(html, e) {
 add_action(function shorten_std_names(html, e) {
 	const rstring = '\\bstd::basic_string&lt;(char)(, std::char_traits&lt;\\1&gt;, std::allocator&lt;\\1&gt; )?&gt;'
 		+ '( (?=&gt;))?';
-	return html.replace(/\bstd::__\w+::/g, 'std::')
-                .replace(RegExp(rstring, 'g'), 'string');
+	return html.replace(/\bstd::__\w+::/g, 'std::').replace(RegExp(rstring, 'g'), 'std::string');
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
