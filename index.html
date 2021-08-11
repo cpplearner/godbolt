@@ -3,33 +3,33 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Compiler Explorer Tool</title>
 <style>
-body { overflow: scroll }
-button, label, summary { font-size: 18px }
-.toggle { cursor: pointer }
-.toggle > .full { display: none }
-.toggle.full > .abbr { display: none }
-.toggle.full > .full { display: unset }
-#expand { position: absolute; top: 9px; right: 10px }
-#expand.full + #code { height: calc(100vh - 50px) }
-#code, output { font-family: monospace; word-break: break-all; white-space: pre-wrap }
-#code { width: calc(100vw - 42px); height: calc(100vh - 300px); margin: 1px }
-#container { width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto }
-.controller { display: table-cell }
-.controller label { white-space: nowrap }
-.input { width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px }
-#fromlink { display: flex }
-#fromlink > button { flex: none }
-#fromlink > input { width: 100% }
-#output:not([data-loading="0"])::before { content: 'loading...'; display: block }
-#stdout:not(:empty)::before, #stderr:not(:empty)::before { content: attr(id) ':'; font-size: x-small }
-output .bold { font-weight: bold }
-output .red { color: red }
-output .green { color: green }
-output .yellow { color: orange }
-output .blue { color: blue }
-output .magenta { color: magenta }
-output .cyan { color: darkcyan }
-output .bold.green:only-child { font-weight: normal }
+body{overflow: scroll}
+button, label, summary{font-size: 18px}
+.toggle{cursor: pointer}
+.toggle > .full{display: none}
+.toggle.full > .abbr{display: none}
+.toggle.full > .full{display: unset}
+#expand{position: absolute; top: 9px; right: 10px}
+#expand.full + #code{height: calc(100vh - 50px)}
+#code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
+#code{width: calc(100vw - 42px); height: calc(100vh - 300px); margin: 1px}
+#container{width: calc(100vw - 35px); padding: 0; margin: 0; overflow: auto}
+.controller{display: table-cell}
+.controller label{white-space: nowrap}
+.input{width: calc(100vw - 36px); box-sizing: border-box; padding: 1px; margin: 1px}
+#fromlink{display: flex}
+#fromlink > button{flex: none}
+#fromlink > input{width: 100%}
+#output:not([data-loading="0"])::before{content: 'loading...'; display: block}
+#stdout:not(:empty)::before, #stderr:not(:empty)::before{content: attr(id) ':'; font-size: x-small}
+output .bold{font-weight: bold}
+output .red{color: red}
+output .green{color: green}
+output .yellow{color: orange}
+output .blue{color: blue}
+output .magenta{color: magenta}
+output .cyan{color: darkcyan}
+output .bold.green:only-child{font-weight: normal}
 </style>
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <textarea id="code"></textarea>
@@ -61,92 +61,91 @@ output .bold.green:only-child { font-weight: normal }
 <button name="ast" data-enableif="supportsAstView">ast</button>
 </template>
 <script>
-let request = (url, req = {}, type = 'application/json', moreheaders = { 'Content-Type': type, 'Accept': type }) =>
-	fetch('https://godbolt.org/api'+url, { ...req, headers: { ...req.headers, ...moreheaders } });
+let request = (url, req = {}, type = 'application/json') =>
+	fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
 let cacheGet = async (cache, i, url, f = undefined) =>
 	JSON.parse(cache[i]  || (cache[i] = await request(url).then(x => x.text()).then(f)));
 let stored = (s) => JSON.parse(sessionStorage[s]) || [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
 	'/compilers?fields=id,name,lang,group,groupName,libs,remote,tools,' +
 	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView',
-	x => JSON.stringify(JSON.parse(x).map(x => ({ ...x, libs: x.remote ? x.libs : undefined }))));
+	x => JSON.stringify(JSON.parse(x).map(x => ({...x, libs: x.remote ? x.libs : undefined}))));
 let getLibs = (use_cache = sessionStorage) => cacheGet(use_cache, 'libs', '/libraries');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
-let compile = (id, body) => request('/compiler/'+id+'/compile', { method: 'post', body }).then(x => x.json());
+let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
+let qS = (selector) => document.querySelector(selector);
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 function init(node, nodes = []) {
-	Object.assign(node, { textContent: '' }).append(...nodes);
+	node.replaceChildren(...nodes);
 	return node;
 }
 let initselect = (parent, f, groups, p) =>
-	init(parent, groups.map(g => init(create('optgroup', { label: g }), f(g).map(t => create('option', p(t))))));
-let make_toggle = ({ abbr, full, tooltip = '' }) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
+	init(parent, groups.map(g => init(create('optgroup', {label: g}), f(g).map(t => create('option', p(t))))));
+let make_toggle = ({abbr, full, tooltip = ''}) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
 	+abbr+'</span><span class="full">'+full+'</span></span>';
-document.addEventListener('click', e => e.target.closest('.toggle') && e.target.closest('.toggle').classList.toggle('full'));
-let panel_tmplt = document.querySelector('#panel').content;
-document.querySelector('#container').append(init(create('li', { className: 'controller' }), [panel_tmplt.cloneNode(true)]));
+document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
+qS('#container').append(init(create('li', {className: 'controller'}), [qS('#panel').content.cloneNode(true)]));
 function reinitpanel(s, panel = s.closest('.controller'), c = stored('compilers').find(x => x.id === s.value)) {
 	if (!c) return;
 	[...panel.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
 	const libs = c.libs || stored('libs')[c.lang];
 	const f = group => {
 		const [id, info] = Object.entries(libs).find(x => x[1].name === group);
-		return Object.entries(info.versions).map(x => ({ ...x, id }));
+		return Object.entries(info.versions).map(x => ({...x, id}));
 	};
-	const prop = x => ({ text: x[1].version, value: JSON.stringify({ id: x.id, version: x[0] }) });
+	const prop = x => ({text: x[1].version, value: JSON.stringify({id: x.id, version: x[0]})});
 	initselect(panel.querySelector('.libs'), f, Object.values(libs).map(x => x.name), prop);
 }
-document.querySelector('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
+qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
 function loadstate(data, startup) {
-	if (!startup) document.querySelector('#code').value = data.sessions[0].source;
-	init(document.querySelector('#container'), data.sessions[0].compilers.map((c) => {
-		const panel = panel_tmplt.cloneNode(true);
+	if (!startup) qS('#code').value = data.sessions[0].source;
+	init(qS('#container'), data.sessions[0].compilers.map((c) => {
+		const panel = qS('#panel').content.cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
 		reinitpanel(panel.querySelector('.compiler'), panel);
-		return init(create('li', { className: 'controller' }), [panel]);
+		return init(create('li', {className: 'controller'}), [panel]);
 	}));
 }
-let shortlink = () => document.querySelector('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
+let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers(), getLibs()]).then(([x, data], gN = v => v.groupName || v.group) => {
 	data.sort((x, y) => x.id.localeCompare(y.id));
 	const f = group => data.filter(x => gN(x) === group);
-	for (const c of [...document.querySelectorAll('.compiler'), panel_tmplt.querySelector('.compiler')])
-		initselect(c, f, [...new Set(data.map(gN))], x => ({ text: x.lang+' : '+x.name, value: x.id }));
+	for (const c of [...document.querySelectorAll('.compiler'), qS('#panel').content.querySelector('.compiler')])
+		initselect(c, f, [...new Set(data.map(gN))], x => ({text: x.lang+' : '+x.name, value: x.id}));
 	loadstate(x, true);
-	document.querySelector('#output').dataset.loading--;
+	qS('#output').dataset.loading--;
 });
 let actions = {};
 let cache = {};
 function display(output, attr, data) {
 	const h = init(output, data.map(t => init(create('div'), [t.text]))).innerHTML;
-	const s = Object.values(actions).reduce((h, f) => f(h, { attr }), h);
+	const s = Object.values(actions).reduce((h, f) => f(h, {attr}), h);
 	if (h !== s) output.innerHTML = s;
 }
-document.addEventListener('click', async ({ target: button }) => {
+qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
+qS('#container').addEventListener('click', async ({target: button}) => {
 	if (!button.matches('button')) return;
-	output.dataset.loading++;
+	qS('#output').dataset.loading++;
 	try {
-		if (button.matches('#fromlink > button')) return loadstate(await getInfo(shortlink(), false));
 		const panel = button.closest('.controller');
-		const source = document.querySelector('#code').value;
+		const source = qS('#code').value;
 		const compiler = panel.querySelector('.compiler').value;
-		const userArguments = document.querySelector('#goptions').value+' '+panel.querySelector('.options').value;
-		const compilerOptions = { produceAst: button.name === 'ast', skipPopArgs: true };
+		const userArguments = qS('#goptions').value+' '+panel.querySelector('.options').value;
+		const compilerOptions = {produceAst: button.name === 'ast', skipPopArgs: true};
 		const libraries = [...panel.querySelector('.libs').selectedOptions].map(x => JSON.parse(x.value));
-		const checkboxes = [...panel.querySelectorAll('.filters input[type=checkbox]')];
-		const filters = Object.assign(...checkboxes.map((e) => ({ [e.name]: e.checked })));
+		const filters = Object.fromEntries([...panel.querySelectorAll('.filters :checked')].map(e => [e.name, true]));
 		const [args, stdin] = ['.exeargs', '.stdin'].map(x => panel.querySelector(x).value);
-		const executeParameters = { args, stdin };
-		const k = JSON.stringify({ source, compiler, userArguments, filters, libraries, executeParameters });
+		const executeParameters = {args, stdin};
+		const k = JSON.stringify({source, compiler, userArguments, filters, libraries, executeParameters});
 		if (!cache[k] || button.name === 'ast' && !cache[k].astOutput) {
-			const options = { userArguments, compilerOptions, filters, libraries, executeParameters };
-			const d = await compile(compiler, JSON.stringify({ source, compiler, options }));
-			if (d.okToCache) cache[k] = { ...cache[k], ...d };
+			const options = {userArguments, compilerOptions, filters, libraries, executeParameters};
+			const d = await compile(compiler, JSON.stringify({source, options}));
+			if (d.okToCache) cache[k] = {...cache[k], ...d};
 		}
 		const [output, out, err] = [...document.querySelectorAll('output')].map(output => init(output));
 		if (button.name === 'ast')
-			display(output, 'ast', [{ text: cache[k].astOutput }]);
+			display(output, 'ast', [{text: cache[k].astOutput}]);
 		else if (button.name === 'asm')
 			display(output, 'asm', cache[k].asm);
 		else if (!filters.execute)
@@ -156,7 +155,7 @@ document.addEventListener('click', async ({ target: button }) => {
 		else
 			[out, err].map(o => display(o, '', cache[k].execResult[o.id]));
 	} finally {
-		output.dataset.loading--;
+		qS('#output').dataset.loading--;
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
@@ -178,7 +177,7 @@ add_action(function shorten_filename(html, e) {
 		'/opt/compiler-explorer/(?:libs/(?:\\S*?/include/(?=[^\\s/]*?/))?|\\S*?/include/c\\+\\+/[^\\s/]*?/)',
 		'/tmp/compiler-explorer-compiler\\S*?/',
 	];
-	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({ abbr: '.../', full: m, tooltip: m }));
+	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({abbr: '.../', full: m, tooltip: m}));
 });
 add_action(function strip_ast_output(html, e) {
 	if (e.attr !== 'ast') return html;
@@ -197,16 +196,16 @@ add_action(function shorten_decl(html, e) {
 			let re = /&lt;&lt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
 			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
 				s += m.slice(lastindex, r.index);
-				if (r[1]) stack.push({ ...r, pos: s.length });
+				if (r[1]) stack.push({...r, pos: s.length});
 				if (r[2]) {
-					while (r[0] !== '&gt;' && stack[stack.length - 1][1] !== { ')': '(', ']': '[' }[r[0]])
+					while (r[0] !== '&gt;' && stack[stack.length - 1][1] !== {')': '(', ']': '['}[r[0]])
 						stack.pop();
 					if (r[0] !== '&gt;' || stack[stack.length - 1][1] === '&lt;') {
 						const l = stack.pop();
 						const [abbr, full] = [l[0]+'...', s.slice(l.pos)];
 						const tooltip = m.slice(l.index + l[0].length, r.index);
 						if (r.index - l.index - abbr.length > 30)
-							s = s.slice(0, l.pos) + make_toggle({ abbr, full, tooltip });
+							s = s.slice(0, l.pos) + make_toggle({abbr, full, tooltip});
 					}
 				}
 				if (r[3] === '') return s;
