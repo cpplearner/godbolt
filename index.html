@@ -6,9 +6,8 @@
 body{overflow: scroll}
 button, label, summary{font-size: 18px}
 .toggle{cursor: pointer}
-.toggle > .full{display: none}
+.toggle:not(.full) > .full{display: none}
 .toggle.full > .abbr{display: none}
-.toggle.full > .full{display: unset}
 #expand{position: absolute; top: 9px; right: 10px}
 #expand.full + #code{height: calc(100vh - 50px)}
 #code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
@@ -145,7 +144,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		}
 		const [output, out, err] = [...document.querySelectorAll('output')].map(output => init(output));
 		if (button.name === 'ast')
-			display(output, 'ast', [{text: cache[k].astOutput}]);
+			display(output, 'ast', cache[k].astOutput);
 		else if (button.name === 'asm')
 			display(output, 'asm', cache[k].asm);
 		else if (!filters.execute)
