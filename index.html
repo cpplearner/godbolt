@@ -10,13 +10,13 @@ button, label, summary{font-size: 18px}
 .toggle.full > .abbr{display: none}
 .tablist, .tabpanels{display: flex; width: 100%; padding: 0; margin: 0; flex-flow: row wrap}
 .tablist > *, .tabpanels > *{flex: auto}
-.tab{display: grid; border: 1px solid; border-radius: 4px 4px 0 0}
+.tab{display: grid; border: 1px solid; border-radius: 5px 5px 0 0}
 .addtab{display: inline; padding: 0 15px; border: none; flex: none; font-weight: bold}
 label:not([hidden]) + .setlabel{display: none}
 #expand{padding-top: 5px; position: absolute; right: 10px}
-#expand.full + #code{height: calc(100vh - 50px)}
+#expand.full + #code{height: calc(100vh - 80px)}
 #code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
-#code{height: calc(100vh - 320px); margin: 1px}
+#code{height: calc(100vh - 350px); margin: 1px}
 #container label{white-space: nowrap}
 .input{width: 100%; box-sizing: border-box; padding: 1px; margin: 1px}
 #fromlink{display: flex}
@@ -45,7 +45,6 @@ output .bold.green:only-child{font-weight: normal}
 <ul id="container" class="tabpanels"><li class="panel">
 <input class="input options">
 <select class="input compiler"><option value="gsnapshot"></select>
-<details><summary>include libs</summary><select class="input libs" multiple></select></details>
 <details class="filters" open><summary>options</summary>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label><input type=checkbox name="execute" data-enableif="supportsExecute">execute</label>
@@ -70,14 +69,11 @@ output .bold.green:only-child{font-weight: normal}
 <script>
 let request = (url, req = {}, type = 'application/json') =>
 	fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
-let cacheGet = async (cache, i, url, f = undefined) =>
-	JSON.parse(cache[i]  ||= await request(url).then(x => x.text()).then(f));
+let cacheGet = async (cache, i, url) => cache[i]  ||= await request(url).then(x => x.json());
 let stored = (s) => JSON.parse(sessionStorage[s]) || [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
-	'/compilers?fields=id,name,lang,group,groupName,libs,remote,tools,' +
-	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView',
-	x => JSON.stringify(JSON.parse(x).map(x => ({...x, libs: x.remote ? x.libs : undefined}))));
-let getLibs = (use_cache = sessionStorage) => cacheGet(use_cache, 'libs', '/libraries');
+	'/compilers?fields=id,name,lang,groupName,' +
+	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
 let qS = (selector) => document.querySelector(selector);
@@ -86,10 +82,8 @@ function init(node, nodes = []) {
 	node.replaceChildren(...nodes);
 	return node;
 }
-let initselect = (parent, f, groups, p) =>
-	init(parent, groups.map(g => init(create('optgroup', {label: g}), f(g).map(t => create('option', p(t))))));
-let make_toggle = ({abbr, full, tooltip = ''}) => '<span class="toggle"><span class="abbr" title="'+tooltip+'">'
-	+abbr+'</span><span class="full">'+full+'</span></span>';
+let make_toggle = ({abbr, full, tooltip = ''}) => `<span class="toggle"><span class="abbr" title="${tooltip}">`+
+	`${abbr}</span><span class="full">${full}</span></span>`;
 document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
 function allowsetlabel(node) {
 	node.querySelector('label').addEventListener('dblclick', e => node.querySelector('label').hidden = true);
@@ -110,40 +104,34 @@ for (const b of document.querySelectorAll('.tablist')) {
 	});
 }
 function reinitpanel(s, p = s.closest('.controller'), c = stored('compilers').find(x => x.id === s.value)) {
-	if (!c) return;
 	const i = [...qS('#container').childNodes].indexOf(p);
-	if (c.groupName) qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c.groupName;
-	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c[x.dataset.enableif]);
-	const libs = c.libs || stored('libs')[c.lang];
-	const f = group => {
-		const [id, info] = Object.entries(libs).find(x => x[1].name === group);
-		return Object.entries(info.versions).map(x => ({...x, id}));
-	};
-	const prop = x => ({text: x[1].version, value: JSON.stringify({id: x.id, version: x[0]})});
-	initselect(p.querySelector('.libs'), f, Object.values(libs).map(x => x.name), prop);
+	if (c?.groupName) qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c.groupName;
+	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
 function loadstate(data, startup) {
 	if (!startup) qS('#code textarea').value = data.sessions[0].source;
 	const t = qS('[data-panels="container"]');
 	init(t, [...data.sessions[0].compilers.map(() => t.firstChild.cloneNode(true)), t.lastChild]);
-	[...t.querySelectorAll('.tab')].forEach(allowsetlabel);
 	init(qS('#container'), data.sessions[0].compilers.map(c => {
 		const panel = qS('#container > li').cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
 		return panel;
 	}));
+	[...t.querySelectorAll('.tab')].forEach(allowsetlabel);
 	for (const p of qS('#container').childNodes)
 		reinitpanel(p.querySelector('.compiler'), Object.assign(p, {hidden: true}));
 	qS('#container').lastChild.hidden = false;
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
-Promise.all([getInfo(shortlink()), getCompilers(), getLibs()]).then(([x, data], gN = v => v.groupName || '') => {
+Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data]) => {
 	data.sort((x, y) => x.id.localeCompare(y.id));
-	const f = group => data.filter(x => gN(x) === group);
+	const options = data.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
+	const groups = data.reduce((a, x, i) => ((a[x.groupName || ''] ||= []).push(options[i]), a), {});
+	const optgroups = Object.keys(groups).map(g => init(create('optgroup', {label: g}), groups[g]));
 	for (const c of document.querySelectorAll('.compiler'))
-		initselect(c, f, [...new Set(data.map(gN))], x => ({text: x.lang+' : '+x.name, value: x.id}));
+		init(c, init(new DocumentFragment(), optgroups).cloneNode(true));
 	loadstate(x, true);
 	qS('#output').dataset.loading--;
 });
@@ -166,14 +154,13 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
 		const compilerOptions = {produceAst: button.name === 'ast', executorRequest: files.length, skipPopArgs: true};
-		const libraries = [...p.querySelector('.libs').selectedOptions].map(x => JSON.parse(x.value));
 		const filters = Object.fromEntries([...p.querySelectorAll('.filters :checked')].map(e => [e.name, true]));
 		const [args, stdin] = ['.exeargs', '.stdin'].map(x => p.querySelector(x).value);
 		const executeParameters = {args, stdin};
-		const k = JSON.stringify({source, files, compiler, userArguments, filters, libraries, executeParameters});
+		const k = JSON.stringify({source, files, compiler, userArguments, filters, executeParameters});
 		let res = cache[k];
 		if (!res || button.name === 'ast' && !res.astOutput) {
-			const options = {userArguments, compilerOptions, filters, libraries, executeParameters};
+			const options = {userArguments, compilerOptions, filters, executeParameters};
 			res = await compile(compiler, JSON.stringify({source, files, options}));
 			if (res.okToCache) cache[k] = {...cache[k], ...res};
 		}
