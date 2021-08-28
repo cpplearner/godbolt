@@ -68,8 +68,8 @@ output .bold.green:only-child{font-weight: normal}
 <output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <script>
 let request = (url, req = {}, type = 'application/json') =>
-	fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
-let cacheGet = async (cache, i, url) => cache[i]  ||= await request(url).then(x => x.json());
+    fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
+let cacheGet = async (cache, i, url) => JSON.parse(cache[i]  ||= await request(url).then(x => x.text()));
 let stored = (s) => JSON.parse(sessionStorage[s]) || [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
 	'/compilers?fields=id,name,lang,groupName,' +
@@ -103,7 +103,7 @@ for (const b of document.querySelectorAll('.tablist')) {
 		qS('#'+b.dataset.panels).childNodes[i].hidden = false;
 	});
 }
-function reinitpanel(s, p = s.closest('.controller'), c = stored('compilers').find(x => x.id === s.value)) {
+function reinitpanel(s, p = s.closest('.panel'), c = stored('compilers').find(x => x.id === s.value)) {
 	const i = [...qS('#container').childNodes].indexOf(p);
 	if (c?.groupName) qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c.groupName;
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
@@ -125,14 +125,14 @@ function loadstate(data, startup) {
 	qS('#container').lastChild.hidden = false;
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
-Promise.all([getInfo(shortlink()), getCompilers()]).then(([x, data]) => {
-	data.sort((x, y) => x.id.localeCompare(y.id));
-	const options = data.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
-	const groups = data.reduce((a, x, i) => ((a[x.groupName || ''] ||= []).push(options[i]), a), {});
+Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => {
+	compilers.sort((x, y) => x.id.localeCompare(y.id));
+	const options = compilers.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
+	const groups = compilers.reduce((a, x, i) => ((a[x.groupName || ''] ||= []).push(options[i]), a), {});
 	const optgroups = Object.keys(groups).map(g => init(create('optgroup', {label: g}), groups[g]));
 	for (const c of document.querySelectorAll('.compiler'))
-		init(c, init(new DocumentFragment(), optgroups).cloneNode(true));
-	loadstate(x, true);
+		init(c, [init(new DocumentFragment(), optgroups).cloneNode(true)]);
+	loadstate(info, true);
 	qS('#output').dataset.loading--;
 });
 let actions = {};
