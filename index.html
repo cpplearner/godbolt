@@ -13,10 +13,11 @@ button, label, summary{font-size: 18px}
 .tab{display: grid; border: 1px solid; border-radius: 5px 5px 0 0}
 .addtab{display: inline; padding: 0 15px; border: none; flex: none; font-weight: bold}
 label:not([hidden]) + .setlabel{display: none}
-#expand{padding-top: 5px; position: absolute; right: 10px}
+#expand{width: 25px; padding-top: 5px; position: absolute; right: 10px}
 #expand.full + #code{height: calc(100vh - 80px)}
+#format{padding-top: 5px; position:absolute; right: 40px}
 #code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
-#code{height: calc(100vh - 350px); margin: 1px}
+#code textarea{height: calc(100vh - 350px); margin: 1px}
 #container label{white-space: nowrap}
 .input{width: 100%; box-sizing: border-box; padding: 1px; margin: 1px}
 #fromlink{display: flex}
@@ -37,6 +38,7 @@ output .bold.green:only-child{font-weight: normal}
 <label><input type=radio name="code" checked><a class="text"></a></label><input class="setlabel">
 <li class="addtab">+</ul>
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
+<span id="format"><button>format</button></span>
 <div id="code" class="tabpanels"><textarea></textarea></div>
 <input id="goptions" class="input">
 <ul class="tablist" data-panels="container"><li class="tab">
@@ -68,15 +70,17 @@ output .bold.green:only-child{font-weight: normal}
 <output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
 <script>
 let request = (url, req = {}, type = 'application/json') =>
-    fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
-let cacheGet = async (cache, i, url) => JSON.parse(cache[i]  ||= await request(url).then(x => x.text()));
-let stored = (s) => JSON.parse(sessionStorage[s]) || [];
+	fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
+let cacheGet = async (cache, i, url) => JSON.parse(cache[i] ??= await request(url).then(x => x.text()));
+let stored = (s) => JSON.parse(sessionStorage[s]) ?? [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
 	'/compilers?fields=id,name,lang,groupName,' +
 	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
+let format = (body) => request('/format/clangformat', {method: 'post', body}).then(x => x.json());
 let qS = (selector) => document.querySelector(selector);
+let qSA = (selector) => [...document.querySelectorAll(selector)];
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
 function init(node, nodes = []) {
 	node.replaceChildren(...nodes);
@@ -85,56 +89,54 @@ function init(node, nodes = []) {
 let make_toggle = ({abbr, full, tooltip = ''}) => `<span class="toggle"><span class="abbr" title="${tooltip}">`+
 	`${abbr}</span><span class="full">${full}</span></span>`;
 document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
-function allowsetlabel(node) {
-	node.querySelector('label').addEventListener('dblclick', e => node.querySelector('label').hidden = true);
-	['blur', 'change'].map(n => node.querySelector('.setlabel').addEventListener(n, e => {
-		node.querySelector('.text').text = e.target.value;
-		node.querySelector('label').hidden = false;
+function allowsetlabel(node, label = node.querySelector('label'), setlabel = node.querySelector('.setlabel')) {
+	label.addEventListener('dblclick', e => label.hidden = true);
+	['blur', 'change'].forEach(n => setlabel.addEventListener(n, e => {
+		node.querySelector('.text').text = setlabel.value;
+		label.hidden = false;
 	}));
 }
-for (const b of document.querySelectorAll('.tablist')) {
-	b.addEventListener('click', e => {
-		const i = [...b.childNodes].indexOf(e.target.closest('.tab') || b.firstChild);
-		if (e.target.matches('.addtab')) {
-			[b, qS('#'+b.dataset.panels)].forEach(e => e.childNodes[i].after(e.childNodes[i].cloneNode(true)));
-			allowsetlabel(b.childNodes[i+1]);
-		}
-		[...qS('#'+b.dataset.panels).childNodes].forEach(b => b.hidden = true);
-		qS('#'+b.dataset.panels).childNodes[i].hidden = false;
-	});
-}
+qSA('.tablist').forEach(b => b.addEventListener('click', e => {
+	const i = [...b.childNodes].indexOf(e.target.closest('.tab') ?? b.firstChild);
+	if (e.target.matches('.addtab')) {
+		[b, qS('#'+b.dataset.panels)].forEach(e => e.childNodes[i].after(e.childNodes[i].cloneNode(true)));
+		allowsetlabel(b.childNodes[i+1]);
+	}
+	[...qS('#'+b.dataset.panels).childNodes].forEach(b => b.hidden = true);
+	qS('#'+b.dataset.panels).childNodes[i].hidden = false;
+}));
+qS('#format').addEventListener('click', () => {
+	const t = qS('#code textarea:not([hidden])');
+	format(JSON.stringify({base: 'LLVM', source: t.value})).then(x => t.value = x.answer);
+});
 function reinitpanel(s, p = s.closest('.panel'), c = stored('compilers').find(x => x.id === s.value)) {
-	const i = [...qS('#container').childNodes].indexOf(p);
+	const i = qSA('.panel').indexOf(p);
 	if (c?.groupName) qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c.groupName;
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
-function loadstate(data, startup) {
+function loadstate(data, startup, t = qS('[data-panels="container"]')) {
 	if (!startup) qS('#code textarea').value = data.sessions[0].source;
-	const t = qS('[data-panels="container"]');
 	init(t, [...data.sessions[0].compilers.map(() => t.firstChild.cloneNode(true)), t.lastChild]);
 	init(qS('#container'), data.sessions[0].compilers.map(c => {
-		const panel = qS('#container > li').cloneNode(true);
+		const panel = qS('.panel').cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
 		return panel;
 	}));
-	[...t.querySelectorAll('.tab')].forEach(allowsetlabel);
-	for (const p of qS('#container').childNodes)
-		reinitpanel(p.querySelector('.compiler'), Object.assign(p, {hidden: true}));
+	[...t.querySelectorAll('.tab')].forEach(e => allowsetlabel(e));
+	qSA('.panel').forEach(p => reinitpanel(p.querySelector('.compiler'), Object.assign(p, {hidden: true})));
 	qS('#container').lastChild.hidden = false;
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => {
 	compilers.sort((x, y) => x.id.localeCompare(y.id));
 	const options = compilers.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
-	const groups = compilers.reduce((a, x, i) => ((a[x.groupName || ''] ||= []).push(options[i]), a), {});
+	const groups = compilers.reduce((a, x, i) => ((a[x.groupName ?? ''] ??= []).push(options[i]), a), {});
 	const optgroups = Object.keys(groups).map(g => init(create('optgroup', {label: g}), groups[g]));
-	for (const c of document.querySelectorAll('.compiler'))
-		init(c, [init(new DocumentFragment(), optgroups).cloneNode(true)]);
+	qSA('.compiler').forEach(c => init(c, optgroups.map(x => x.cloneNode(true))));
 	loadstate(info, true);
-	qS('#output').dataset.loading--;
-});
+}).finally(() => qS('#output').dataset.loading--);
 let actions = {};
 let cache = {};
 function display(output, attr, data) {
@@ -149,7 +151,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 	try {
 		const p = button.closest('.panel');
 		const source = qS('#code textarea').value;
-		const filenames = [...document.querySelectorAll('#filenames .text')].slice(1).map(a => a.text);
+		const filenames = qSA('#filenames .text').slice(1).map(a => a.text);
 		const files = filenames.map((filename, i) => ({filename, contents: qS('#code').childNodes[i+1].value}));
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
@@ -164,19 +166,15 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 			res = await compile(compiler, JSON.stringify({source, files, options}));
 			if (res.okToCache) cache[k] = {...cache[k], ...res};
 		}
-		const [output, out, err] = [...document.querySelectorAll('output')].map(output => init(output));
+		const [output, out, err] = qSA('output').map(output => init(output));
 		if (button.name === 'ast')
-			display(output, 'ast', res.astOutput || []);
+			display(output, 'ast', res.astOutput ?? []);
 		else if (button.name === 'asm')
-			display(output, 'asm', res.asm || []);
-		else if (res.execResult?.didExecute === false)
-			[out, err].forEach(o => display(o, '', res.execResult.buildResult[o.id]));
-		else if (res.execResult)
-			[out, err].forEach(o => display(o, '', res.execResult[o.id]));
-		else if (res.didExecute === false)
-			[out, err].forEach(o => display(o, '', res.buildResult[o.id]));
+			display(output, 'asm', res.asm ?? []);
+		else if ((res.execResult ?? res)?.didExecute === false)
+			[out, err].forEach(o => display(o, '', (res.execResult ?? res).buildResult[o.id]));
 		else
-			[out, err].forEach(o => display(o, '', res[o.id]));
+			[out, err].forEach(o => display(o, '', (res.execResult ?? res)[o.id]));
 	} finally {
 		qS('#output').dataset.loading--;
 	}
