@@ -25,6 +25,7 @@ label:not([hidden]) + .setlabel{display: none}
 #fromlink > input{flex: auto}
 #output:not([data-loading="0"])::before{content: 'loading...'; display: block}
 #stdout:not(:empty)::before, #stderr:not(:empty)::before{content: attr(id) ':'; font-size: x-small}
+output div{contain: layout style paint}
 output .bold{font-weight: bold}
 output .red{color: red}
 output .green{color: green}
@@ -97,7 +98,7 @@ function allowsetlabel(node, label = node.querySelector('label'), setlabel = nod
 	}));
 }
 qSA('.tablist').forEach(b => b.addEventListener('click', e => {
-	const i = [...b.childNodes].indexOf(e.target.closest('.tab') ?? b.firstChild);
+	const i = [...b.childNodes].indexOf(b.querySelector(':checked').closest('.tab') ?? b.firstChild);
 	if (e.target.matches('.addtab')) {
 		[b, qS('#'+b.dataset.panels)].forEach(e => e.childNodes[i].after(e.childNodes[i].cloneNode(true)));
 		allowsetlabel(b.childNodes[i+1]);
@@ -115,10 +116,10 @@ function reinitpanel(s, p = s.closest('.panel'), c = stored('compilers').find(x 
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
-function loadstate(data, startup, t = qS('[data-panels="container"]')) {
-	if (!startup) qS('#code textarea').value = data.sessions[0].source;
-	init(t, [...data.sessions[0].compilers.map(() => t.firstChild.cloneNode(true)), t.lastChild]);
-	init(qS('#container'), data.sessions[0].compilers.map(c => {
+function loadstate({sessions: [s]}, startup, t = qS('[data-panels="container"]')) {
+	if (!startup) qS('#code textarea').value = s.source;
+	init(t, [...[...s.compilers, ...s.executors].map(() => t.firstChild.cloneNode(true)), t.lastChild]);
+	init(qS('#container'), [...s.compilers, ...s.executors.map(x => x.compiler)].map(c => {
 		const panel = qS('.panel').cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
@@ -180,7 +181,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
-let replace = (html, re, cb) => html.replace(/>([^]+?)</g, (m, p1) => `>${p1.replace(re, cb)}<`);
+let replace = (html, re, cb) => html.replace(/(?<=^|>)(.+?)(?=<|$)/g, (m, p1) => p1.replace(re, cb));
 add_action(function colorize(html, e) {
 	if (e.attr === 'asm') return html;
 	const classmap = {
@@ -209,7 +210,7 @@ add_action(function strip_ast_output(html, e) {
 add_action(function shorten_std_names(html, e) {
 	const rstring = '\\bstd::basic_string&lt;(char)(, std::char_traits&lt;\\1&gt;, std::allocator&lt;\\1&gt; )?&gt;'
 		+ '( (?=&gt;))?';
-	return html.replace(/\bstd::__\w+::/g, 'std::').replace(RegExp(rstring, 'g'), 'std::string');
+	return replace(replace(html, /\bstd::__\w+::/g, () => 'std::'), RegExp(rstring, 'g'), () => 'std::string');
 });
 add_action(function shorten_decl(html, e) {
 	return replace(html, /^.*$/g, (m) => {
