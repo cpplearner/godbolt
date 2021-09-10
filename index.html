@@ -98,13 +98,12 @@ function allowsetlabel(node, label = node.querySelector('label'), setlabel = nod
 	}));
 }
 qSA('.tablist').forEach(b => b.addEventListener('click', e => {
-	const i = [...b.childNodes].indexOf(b.querySelector(':checked').closest('.tab') ?? b.firstChild);
+	const i = [...b.childNodes].indexOf(b.querySelector(':checked')?.closest('.tab') ?? b.firstChild);
 	if (e.target.matches('.addtab')) {
 		[b, qS('#'+b.dataset.panels)].forEach(e => e.childNodes[i].after(e.childNodes[i].cloneNode(true)));
 		allowsetlabel(b.childNodes[i+1]);
 	}
-	[...qS('#'+b.dataset.panels).childNodes].forEach(b => b.hidden = true);
-	qS('#'+b.dataset.panels).childNodes[i].hidden = false;
+	[...qS('#'+b.dataset.panels).childNodes].forEach((b, idx) => b.hidden = idx !== i);
 }));
 qS('#format').addEventListener('click', () => {
 	const t = qS('#code textarea:not([hidden])');
@@ -112,7 +111,7 @@ qS('#format').addEventListener('click', () => {
 });
 function reinitpanel(s, p = s.closest('.panel'), c = stored('compilers').find(x => x.id === s.value)) {
 	const i = qSA('.panel').indexOf(p);
-	if (c?.groupName) qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c.groupName;
+	qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c?.groupName ?? '';
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
@@ -126,8 +125,8 @@ function loadstate({sessions: [s]}, startup, t = qS('[data-panels="container"]')
 		return panel;
 	}));
 	[...t.querySelectorAll('.tab')].forEach(e => allowsetlabel(e));
-	qSA('.panel').forEach(p => reinitpanel(p.querySelector('.compiler'), Object.assign(p, {hidden: true})));
-	qS('#container').lastChild.hidden = false;
+	qSA('.panel .compiler').forEach(c => reinitpanel(c));
+	qSA('.panel').forEach(p => p.hidden = p !== qS('#container').lastChild);
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => {
@@ -141,9 +140,9 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => 
 let actions = {};
 let cache = {};
 function display(output, attr, data) {
-	const h = init(output, data.map(line => init(create('div'), [line.text]))).innerHTML;
-	const s = Object.values(actions).reduce((h, f) => f(h, {attr}), h);
-	if (h !== s) output.innerHTML = s;
+	const lines = data.map(line => init(create('div'), [line.text]).innerHTML);
+	const adjusted = Object.values(actions).reduce((h, f) => f(h, {attr}), lines);
+	init(output, adjusted.map(line => create('div', {innerHTML: line})));
 }
 qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
 qS('#container').addEventListener('click', async ({target: button}) => {
@@ -153,7 +152,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		const p = button.closest('.panel');
 		const source = qS('#code textarea').value;
 		const filenames = qSA('#filenames .text').slice(1).map(a => a.text);
-		const files = filenames.map((filename, i) => ({filename, contents: qS('#code').childNodes[i+1].value}));
+		const files = filenames.map((filename, i) => ({filename, contents: qSA('#code > *')[i+1].value}));
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
 		const compilerOptions = {produceAst: button.name === 'ast', executorRequest: files.length, skipPopArgs: true};
@@ -181,39 +180,37 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 	}
 });
 let add_action = (f) => actions[f.name] = window[f.name] = f;
-let replace = (html, re, cb) => html.replace(/(?<=^|>)(.+?)(?=<|$)/g, (m, p1) => p1.replace(re, cb));
-add_action(function colorize(html, e) {
-	if (e.attr === 'asm') return html;
-	const classmap = {
-		0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan',
-	};
-	return replace(html, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B\[|$)/mg,
-		(m, p1, p2) => '<span class="'+p1.split(';').map(x => classmap[+x]).join(' ')+'">'+p2+'</span>');
+let replace = (h, re, cb) => h.map(s => s.replace(/(?<=^|>)(.+?)(?=<|$)/g, (m, p1) => p1.replace(re, cb)));
+add_action(function strip_ast_output(data, e) {
+	if (e.attr !== 'ast') return data;
+	const t = data.map((s, i) => [s, i]).filter(a => a[0].match(/^\x1B\[0;34m[`|]-/)).reverse();
+	t.forEach((a, i) => a[0].match(/ &lt;\x1B\[0;33m\x1B\[0m&gt; .* imp/) && data.splice(a[1], t[i-1][1] - a[1]));
+	return replace(data, /\x1B\[0;33m 0x[a-f0-9]+/g, '');
 });
-add_action(function hyperlink(html, e) {
-	if (e.attr === 'asm') return html;
-	return replace(html, /\x1B\]8;;(.*?)\x07(.*?)\x1B]8;;\x07/g, (m, p1, p2) => '<a href="'+p1+'">'+p2+'</a>');
+add_action(function colorize(data, e) {
+	if (e.attr === 'asm') return data;
+	const classmap = {0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan'};
+	return replace(data, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B\[|$)/mg,
+		(m, p1, p2) => `<span class="${p1.split(';').map(x => classmap[x]).join(' ')}">${p2}</span>`);
 });
-add_action(function shorten_filename(html, e) {
+add_action(function hyperlink(data, e) {
+	if (e.attr === 'asm') return data;
+	return replace(data, /\x1B\]8;;(.*?)\x07(.*?)\x1B]8;;\x07/g, (m, p1, p2) => `<a href="${p1}">${p2}</a>`);
+});
+add_action(function shorten_filename(data, e) {
 	const f = [
 		'/opt/compiler-explorer/(?:libs/(?:\\S*?/include/(?=[^\\s/]*?/))?|\\S*?/include/c\\+\\+/[^\\s/]*?/)',
 		'/tmp/compiler-explorer-compiler\\S*?/',
 	];
-	return replace(html, RegExp(f.join('|'), 'g'), m => make_toggle({abbr: '.../', full: m, tooltip: m}));
+	return replace(data, RegExp(f.join('|'), 'g'), m => make_toggle({abbr: '.../', full: m, tooltip: m}));
 });
-add_action(function strip_ast_output(html, e) {
-	if (e.attr !== 'ast') return html;
-	const raddress = /<span class=" yellow"> 0x[a-f0-9]+<\/span>/g;
-	const rimp = /<[^>]+>\|-(<[^>]+>)+\w+(<[^>]+>)+ &lt;(<[^>]+>)+&gt; (<[^>]+>)+ [^]*?\n(?=<[^>]+>[|`]-)/g;
-	return html.replace(raddress, '').replace(rimp, '');
-});
-add_action(function shorten_std_names(html, e) {
-	const rstring = '\\bstd::basic_string&lt;(char)(, std::char_traits&lt;\\1&gt;, std::allocator&lt;\\1&gt; )?&gt;'
+add_action(function shorten_std_names(data, e) {
+	const rstring = '\\bstd::basic_string&lt;(char)(, ?std::char_traits&lt;\\1&gt;, ?std::allocator&lt;\\1&gt; )?&gt;'
 		+ '( (?=&gt;))?';
-	return replace(replace(html, /\bstd::__\w+::/g, () => 'std::'), RegExp(rstring, 'g'), () => 'std::string');
+	return replace(replace(data, /\bstd::__\w+::/g, 'std::'), RegExp(rstring, 'g'), 'std::string');
 });
-add_action(function shorten_decl(html, e) {
-	return replace(html, /^.*$/g, (m) => {
+add_action(function shorten_decl(data, e) {
+	return replace(data, /^.*$/g, (m) => {
 		try {
 			let re = /&lt;&lt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
 			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
