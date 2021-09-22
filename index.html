@@ -152,7 +152,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		const p = button.closest('.panel');
 		const source = qS('#code textarea').value;
 		const filenames = qSA('#filenames .text').slice(1).map(a => a.text);
-		const files = filenames.map((filename, i) => ({filename, contents: qSA('#code > *')[i+1].value}));
+		const files = filenames.map((filename, i) => ({filename, contents: qSA('#code textarea')[i+1].value}));
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
 		const compilerOptions = {produceAst: button.name === 'ast', executorRequest: files.length, skipPopArgs: true};
@@ -191,7 +191,7 @@ add_action(function colorize(data, e) {
 	if (e.attr === 'asm') return data;
 	const classmap = {0: '', 1: 'bold', 31: 'red', 32: 'green', 33: 'yellow', 34: 'blue', 35: 'magenta', 36: 'cyan'};
 	return replace(data, /\x1B\[(.*?)m(?:\x1B\[K)?(.*?)(?=\x1B\[|$)/mg,
-		(m, p1, p2) => `<span class="${p1.split(';').map(x => classmap[x]).join(' ')}">${p2}</span>`);
+		(m, p1, p2) => `<span class="${p1.split(';').map(x => classmap[+x]).join(' ')}">${p2}</span>`);
 });
 add_action(function hyperlink(data, e) {
 	if (e.attr === 'asm') return data;
