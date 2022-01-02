@@ -14,7 +14,7 @@ button, label, summary{font-size: 18px}
 .addtab{display: inline; padding: 0 15px; border: none; flex: none; font-weight: bold}
 label:not([hidden]) + .setlabel{display: none}
 #expand{width: 25px; padding-top: 5px; position: absolute; right: 10px}
-#expand.full + #code{height: calc(100vh - 80px)}
+#expand.full ~ #code textarea{height: calc(100vh - 80px)}
 #format{padding-top: 5px; position:absolute; right: 40px}
 #code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
 #code textarea{height: calc(100vh - 350px); margin: 1px}
@@ -139,7 +139,7 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => 
 }).finally(() => qS('#output').dataset.loading--);
 let actions = {};
 let cache = {};
-function display(output, attr, data) {
+function display(output, attr, data = []) {
 	const lines = data.map(line => init(create('div'), [line.text]).innerHTML);
 	const adjusted = Object.values(actions).reduce((h, f) => f(h, {attr}), lines);
 	init(output, adjusted.map(line => create('div', {innerHTML: line})));
@@ -156,7 +156,8 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
 		const compilerOptions = {produceAst: button.name === 'ast', executorRequest: files.length, skipPopArgs: true};
-		const filters = Object.fromEntries([...p.querySelectorAll('.filters :checked')].map(e => [e.name, true]));
+		const filterElems = [...p.querySelectorAll('.filters input')];
+		const filters = Object.fromEntries(filterElems.map(e => [e.name, e.checked]));
 		const [args, stdin] = ['.exeargs', '.stdin'].map(x => p.querySelector(x).value);
 		const executeParameters = {args, stdin};
 		const k = JSON.stringify({source, files, compiler, userArguments, filters, executeParameters});
@@ -168,9 +169,9 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 		}
 		const [output, out, err] = qSA('output').map(output => init(output));
 		if (button.name === 'ast')
-			display(output, 'ast', res.astOutput ?? []);
+			display(output, 'ast', res.astOutput);
 		else if (button.name === 'asm')
-			display(output, 'asm', res.asm ?? []);
+			display(output, 'asm', res.asm);
 		else if ((res.execResult ?? res)?.didExecute === false)
 			[out, err].forEach(o => display(o, '', (res.execResult ?? res).buildResult[o.id]));
 		else
