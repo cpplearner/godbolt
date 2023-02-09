@@ -6,13 +6,12 @@
 body{overflow: scroll}
 button, label, summary{font-size: 18px}
 .toggle{cursor: pointer}
-.toggle:not(.full) > .full{display: none}
-.toggle.full > .abbr{display: none}
+.toggle:not(.full) > .full, .toggle.full > .abbr{display: none}
 .tablist, .tabpanels{display: flex; width: 100%; padding: 0; margin: 0; flex-flow: row wrap}
 .tablist > *, .tabpanels > *{flex: auto}
 .tab{display: grid; border: 1px solid; border-radius: 5px 5px 0 0}
 .addtab{display: inline; padding: 0 15px; border: none; flex: none; font-weight: bold}
-label:not([hidden]) + .setlabel{display: none}
+.editlabel:not([hidden]) + label{display: none}
 #expand{width: 25px; padding-top: 5px; position: absolute; right: 10px}
 #expand.full ~ #code textarea{height: calc(100vh - 80px)}
 #format{padding-top: 5px; position:absolute; right: 40px}
@@ -36,14 +35,14 @@ output .cyan{color: darkcyan}
 output .bold.green:only-child{font-weight: normal}
 </style>
 <ul id="filenames" class="tablist" data-panels="code"><li class="tab">
-<label><input type=radio name="code" checked><a class="text"></a></label><input class="setlabel">
+<input class="editlabel" hidden><label><input type=radio name="code" checked><a class="text"></a></label>
 <li class="addtab">+</ul>
 <span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
 <span id="format"><button>format</button></span>
 <div id="code" class="tabpanels"><textarea></textarea></div>
 <input id="goptions" class="input">
 <ul class="tablist" data-panels="container"><li class="tab">
-<label><input type=radio name="container" checked><a class="text"></a></label><input class="setlabel">
+<input class="editlabel" hidden><label><input type=radio name="container" checked><a class="text"></a></label>
 <li class="addtab">+</ul>
 <ul id="container" class="tabpanels"><li class="panel">
 <input class="input options">
@@ -90,18 +89,17 @@ function init(node, nodes = []) {
 let make_toggle = ({abbr, full, tooltip = ''}) => `<span class="toggle"><span class="abbr" title="${tooltip}">`+
 	`${abbr}</span><span class="full">${full}</span></span>`;
 document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
-function allowsetlabel(node, label = node.querySelector('label'), setlabel = node.querySelector('.setlabel')) {
-	label.addEventListener('dblclick', e => label.hidden = true);
-	['blur', 'change'].forEach(n => setlabel.addEventListener(n, e => {
-		node.querySelector('.text').text = setlabel.value;
-		label.hidden = false;
-	}));
+function alloweditlabel(node, edit = node.querySelector('.editlabel')) {
+	node.querySelector('label').addEventListener('dblclick', e => Object.assign(edit, {hidden: false}).focus());
+	edit.addEventListener('blur', e => {
+		if (Object.assign(edit, {hidden: true}).value) node.querySelector('.text').text = edit.value;
+	});
 }
 qSA('.tablist').forEach(b => b.addEventListener('click', e => {
 	const i = [...b.childNodes].indexOf(b.querySelector(':checked')?.closest('.tab') ?? b.firstChild);
 	if (e.target.matches('.addtab')) {
-		[b, qS('#'+b.dataset.panels)].forEach(e => e.childNodes[i].after(e.childNodes[i].cloneNode(true)));
-		allowsetlabel(b.childNodes[i+1]);
+		[b, qS('#'+b.dataset.panels)].forEach(p => p.childNodes[i].after(p.childNodes[i].cloneNode(true)));
+		alloweditlabel(b.childNodes[i+1]);
 	}
 	[...qS('#'+b.dataset.panels).childNodes].forEach((b, idx) => b.hidden = idx !== i);
 }));
@@ -124,7 +122,7 @@ function loadstate({sessions: [s]}, startup, t = qS('[data-panels="container"]')
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
 		return panel;
 	}));
-	[...t.querySelectorAll('.tab')].forEach(e => allowsetlabel(e));
+	[...t.querySelectorAll('.tab')].forEach(e => alloweditlabel(e));
 	qSA('.panel .compiler').forEach(c => reinitpanel(c));
 	qSA('.panel').forEach(p => p.hidden = p !== qS('#container').lastChild);
 }
