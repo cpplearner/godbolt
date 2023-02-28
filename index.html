@@ -7,44 +7,43 @@ body{overflow: scroll}
 button, label, summary{font-size: 18px}
 .toggle{cursor: pointer}
 .toggle:not(.full) > .full, .toggle.full > .abbr{display: none}
-.tablist, .tabpanels{display: flex; width: 100%; padding: 0; margin: 0; flex-flow: row wrap}
-.tablist > *, .tabpanels > *{flex: auto}
-.tab{display: grid; border: 1px solid; border-radius: 5px 5px 0 0}
-.addtab{display: inline; padding: 0 15px; border: none; flex: none; font-weight: bold}
+.tabs{display: flex; flex-flow: row wrap; margin: 0; padding: 0; width: 100%}
+#expand{display: block; flex: none; order: 3; width: 25px}
+.tabs > .addtab{display: block; flex: none; font-weight: bold; order: 2; padding: 0 15px}
+.tabs > .tab{border: 1px solid; border-radius: 5px 5px 0 0; display: grid; flex: auto; order: 1}
 .editlabel:not([hidden]) + label{display: none}
-#expand{width: 25px; padding-top: 5px; position: absolute; right: 10px}
-#expand.full ~ #code textarea{height: calc(100vh - 80px)}
-#format{padding-top: 5px; position:absolute; right: 40px}
-#code, output{font-family: monospace; word-break: break-all; white-space: pre-wrap}
-#code textarea{height: calc(100vh - 350px); margin: 1px}
+.tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
+.tabpanel textarea{height: calc(100vh - 350px); margin: 1px}
+#expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
+#format{padding-top: 5px; position: absolute; right: 5px}
+#code textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
+.input, .output{box-sizing: border-box; margin: 1px; padding: 1px; width: 100%}
 #container label{white-space: nowrap}
-.input{width: 100%; box-sizing: border-box; padding: 1px; margin: 1px}
-#fromlink{display: flex}
+#fromlink{display: flex; width: 100%}
 #fromlink > button{flex: none}
 #fromlink > input{flex: auto}
 #output:not([data-loading="0"])::before{content: 'loading...'; display: block}
 #stdout:not(:empty)::before, #stderr:not(:empty)::before{content: attr(id) ':'; font-size: x-small}
-output div{contain: layout style paint}
-output .bold{font-weight: bold}
-output .red{color: red}
-output .green{color: green}
-output .yellow{color: orange}
-output .blue{color: blue}
-output .magenta{color: magenta}
-output .cyan{color: darkcyan}
-output .bold.green:only-child{font-weight: normal}
+.output .bold{font-weight: bold}
+.output .red{color: red}
+.output .green{color: green}
+.output .yellow{color: orange}
+.output .blue{color: blue}
+.output .magenta{color: magenta}
+.output .cyan{color: darkcyan}
+.output .bold.green:only-child{font-weight: normal}
 </style>
-<ul id="filenames" class="tablist" data-panels="code"><li class="tab">
-<input class="editlabel" hidden><label><input type=radio name="code" checked><a class="text"></a></label>
-<li class="addtab">+</ul>
-<span id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button></span>
-<span id="format"><button>format</button></span>
-<div id="code" class="tabpanels"><textarea></textarea></div>
+<ul id="code" class="tabs">
+<li id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button>
+<li class="addtab">+
+<li class="tab"><input class="editlabel" hidden><label><input type=radio name="code" checked><a></a></label>
+<li class="tabpanel"><div><textarea class="input"></textarea><span id="format"><button>format</button></span></div>
+</ul>
 <input id="goptions" class="input">
-<ul class="tablist" data-panels="container"><li class="tab">
-<input class="editlabel" hidden><label><input type=radio name="container" checked><a class="text"></a></label>
-<li class="addtab">+</ul>
-<ul id="container" class="tabpanels"><li class="panel">
+<ul id="container" class="tabs">
+<li class="addtab">+
+<li class="tab"><input class="editlabel" hidden><label><input type=radio name="container" checked><a></a></label>
+<li class="tabpanel">
 <input class="input options">
 <select class="input compiler"><option value="gsnapshot"></select>
 <details class="filters" open><summary>options</summary>
@@ -66,8 +65,8 @@ output .bold.green:only-child{font-weight: normal}
 <button name="output">output</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
 </ul>
-<div id="fromlink" class="input"><input value="https://godbolt.org/z/ovv6aq8x5"><button>fill</button></div>
-<output id="output" data-loading="1"></output><output id="stdout"></output><output id="stderr"></output>
+<div id="fromlink"><input value="https://godbolt.org/z/oc46MhKje"><button>fill</button></div>
+<p id="output" class="output" data-loading="1"><p id="stdout" class="output"><p id="stderr" class="output"></p>
 <script>
 let request = (url, req = {}, type = 'application/json') =>
 	fetch('https://godbolt.org/api'+url, {...req, headers: {'Content-Type': type, 'Accept': type}});
@@ -89,50 +88,47 @@ function init(node, nodes = []) {
 let make_toggle = ({abbr, full, tooltip = ''}) => `<span class="toggle"><span class="abbr" title="${tooltip}">`+
 	`${abbr}</span><span class="full">${full}</span></span>`;
 document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
-function alloweditlabel(node, edit = node.querySelector('.editlabel')) {
-	node.querySelector('label').addEventListener('dblclick', e => Object.assign(edit, {hidden: false}).focus());
-	edit.addEventListener('blur', e => {
-		if (Object.assign(edit, {hidden: true}).value) node.querySelector('.text').text = edit.value;
+function clonelabeledtab(old, node = old.cloneNode(true), edit = node.querySelector('.editlabel')) {
+	node.querySelector('label').addEventListener('dblclick', () => Object.assign(edit, {hidden: false}).focus());
+	edit.addEventListener('blur', () => {
+		if (Object.assign(edit, {hidden: true}).value) node.querySelector('label a').text = edit.value;
 	});
+	return node;
 }
-qSA('.tablist').forEach(b => b.addEventListener('click', e => {
-	const i = [...b.childNodes].indexOf(b.querySelector(':checked')?.closest('.tab') ?? b.firstChild);
+qSA('.tabs').forEach(b => b.addEventListener('click', e => {
+	const panel = b.querySelector(':checked')?.closest('.tab')?.nextSibling ?? b.lastChild;
 	if (e.target.matches('.addtab')) {
-		[b, qS('#'+b.dataset.panels)].forEach(p => p.childNodes[i].after(p.childNodes[i].cloneNode(true)));
-		alloweditlabel(b.childNodes[i+1]);
+		panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
+		(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
 	}
-	[...qS('#'+b.dataset.panels).childNodes].forEach((b, idx) => b.hidden = idx !== i);
+	[...b.querySelectorAll('.tab')].forEach(t => t.nextSibling.hidden = !t.querySelector(':checked'));
 }));
 qS('#format').addEventListener('click', () => {
 	const t = qS('#code textarea:not([hidden])');
 	format(JSON.stringify({base: 'LLVM', source: t.value})).then(x => t.value = x.answer);
 });
-function reinitpanel(s, p = s.closest('.panel'), c = stored('compilers').find(x => x.id === s.value)) {
-	const i = qSA('.panel').indexOf(p);
-	qS('[data-panels="container"]').childNodes[i].querySelector('.text').text = c?.groupName ?? '';
+function reinitpanel(s, p = s.closest('.tabpanel'), c = stored('compilers').find(x => x.id === s.value)) {
+	p.previousSibling.querySelector('label a').text = c?.groupName ?? '';
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
-function loadstate({sessions: [s]}, startup, t = qS('[data-panels="container"]')) {
+function loadstate({sessions: [s]}, startup, t = qS('#container')) {
 	if (!startup) qS('#code textarea').value = s.source;
-	init(t, [...[...s.compilers, ...s.executors].map(() => t.firstChild.cloneNode(true)), t.lastChild]);
-	init(qS('#container'), [...s.compilers, ...s.executors.map(x => x.compiler)].map(c => {
-		const panel = qS('.panel').cloneNode(true);
+	init(t, [t.querySelector('.addtab'), ...[...s.compilers, ...s.executors.map(x => x.compiler)].flatMap(c => {
+		const panel = t.querySelector('.tabpanel').cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
-		return panel;
-	}));
-	[...t.querySelectorAll('.tab')].forEach(e => alloweditlabel(e));
-	qSA('.panel .compiler').forEach(c => reinitpanel(c));
-	qSA('.panel').forEach(p => p.hidden = p !== qS('#container').lastChild);
+		return [clonelabeledtab(t.querySelector('.tab')), panel];
+	})]);
+	qSA('.tabpanel .compiler').forEach(c => reinitpanel(c));
+	[...t.querySelectorAll('.tabpanel')].forEach(p => p.hidden = p !== t.lastChild);
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => {
 	compilers.sort((x, y) => x.id.localeCompare(y.id));
 	const options = compilers.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
 	const groups = compilers.reduce((a, x, i) => ((a[x.groupName ?? ''] ??= []).push(options[i]), a), {});
-	const optgroups = Object.keys(groups).map(g => init(create('optgroup', {label: g}), groups[g]));
-	qSA('.compiler').forEach(c => init(c, optgroups.map(x => x.cloneNode(true))));
+	init(qS('.compiler'), Object.keys(groups).map(n => init(create('optgroup', {label: n}), groups[n])));
 	loadstate(info, true);
 }).finally(() => qS('#output').dataset.loading--);
 let actions = {};
@@ -147,7 +143,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 	if (!button.matches('button')) return;
 	qS('#output').dataset.loading++;
 	try {
-		const p = button.closest('.panel');
+		const p = button.closest('.tabpanel');
 		const source = qS('#code textarea').value;
 		const filenames = qSA('#filenames .text').slice(1).map(a => a.text);
 		const files = filenames.map((filename, i) => ({filename, contents: qSA('#code textarea')[i+1].value}));
@@ -165,7 +161,7 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 			res = await compile(compiler, JSON.stringify({source, files, options}));
 			if (res.okToCache) cache[k] = {...cache[k], ...res};
 		}
-		const [output, out, err] = qSA('output').map(output => init(output));
+		const [output, out, err] = qSA('.output').map(output => init(output));
 		if (button.name === 'ast')
 			display(output, 'ast', res.astOutput);
 		else if (button.name === 'asm')
