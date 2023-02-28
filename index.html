@@ -15,7 +15,7 @@ button, label, summary{font-size: 18px}
 .tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
 .tabpanel textarea{height: calc(100vh - 350px); margin: 1px}
 #expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
-#format{padding-top: 5px; position: absolute; right: 5px}
+.format{padding-top: 5px; position: absolute; right: 5px}
 #code textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
 .input, .output{box-sizing: border-box; margin: 1px; padding: 1px; width: 100%}
 #container label{white-space: nowrap}
@@ -37,7 +37,7 @@ button, label, summary{font-size: 18px}
 <li id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button>
 <li class="addtab">+
 <li class="tab"><input class="editlabel" hidden><label><input type=radio name="code" checked><a></a></label>
-<li class="tabpanel"><div><textarea class="input"></textarea><span id="format"><button>format</button></span></div>
+<li class="tabpanel"><div><div class="format"><button>format</button></div><textarea class="input"></textarea></div>
 </ul>
 <input id="goptions" class="input">
 <ul id="container" class="tabs">
@@ -77,7 +77,8 @@ let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compiler
 	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
-let format = (body) => request('/format/clangformat', {method: 'post', body}).then(x => x.json());
+let format = (code, body = JSON.stringify({base: 'LLVM', source: code.value})) =>
+	request('/format/clangformat', {method: 'post', body}).then(x => x.json()).then(x => code.value = x.answer);
 let qS = (selector) => document.querySelector(selector);
 let qSA = (selector) => [...document.querySelectorAll(selector)];
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
@@ -87,7 +88,6 @@ function init(node, nodes = []) {
 }
 let make_toggle = ({abbr, full, tooltip = ''}) => `<span class="toggle"><span class="abbr" title="${tooltip}">`+
 	`${abbr}</span><span class="full">${full}</span></span>`;
-document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
 function clonelabeledtab(old, node = old.cloneNode(true), edit = node.querySelector('.editlabel')) {
 	node.querySelector('label').addEventListener('dblclick', () => Object.assign(edit, {hidden: false}).focus());
 	edit.addEventListener('blur', () => {
@@ -95,23 +95,10 @@ function clonelabeledtab(old, node = old.cloneNode(true), edit = node.querySelec
 	});
 	return node;
 }
-qSA('.tabs').forEach(b => b.addEventListener('click', e => {
-	const panel = b.querySelector(':checked')?.closest('.tab')?.nextSibling ?? b.lastChild;
-	if (e.target.matches('.addtab')) {
-		panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
-		(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
-	}
-	[...b.querySelectorAll('.tab')].forEach(t => t.nextSibling.hidden = !t.querySelector(':checked'));
-}));
-qS('#format').addEventListener('click', () => {
-	const t = qS('#code textarea:not([hidden])');
-	format(JSON.stringify({base: 'LLVM', source: t.value})).then(x => t.value = x.answer);
-});
 function reinitpanel(s, p = s.closest('.tabpanel'), c = stored('compilers').find(x => x.id === s.value)) {
 	p.previousSibling.querySelector('label a').text = c?.groupName ?? '';
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
-qS('#container').addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
 function loadstate({sessions: [s]}, startup, t = qS('#container')) {
 	if (!startup) qS('#code textarea').value = s.source;
 	init(t, [t.querySelector('.addtab'), ...[...s.compilers, ...s.executors.map(x => x.compiler)].flatMap(c => {
@@ -128,9 +115,21 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => 
 	compilers.sort((x, y) => x.id.localeCompare(y.id));
 	const options = compilers.map(x => create('option', {text: x.lang+' : '+x.name, value: x.id}));
 	const groups = compilers.reduce((a, x, i) => ((a[x.groupName ?? ''] ??= []).push(options[i]), a), {});
-	init(qS('.compiler'), Object.keys(groups).map(n => init(create('optgroup', {label: n}), groups[n])));
+	init(qS('.compiler'), Object.keys(groups).map(name => init(create('optgroup', {label: name}), groups[name])));
 	loadstate(info, true);
 }).finally(() => qS('#output').dataset.loading--);
+document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
+document.addEventListener('click', e => e.target.matches('.format') && format(e.target.nextSibling));
+document.addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
+qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
+qSA('.tabs').forEach(b => b.addEventListener('click', e => {
+	const panel = b.querySelector(':checked')?.closest('.tab')?.nextSibling ?? b.lastChild;
+	if (e.target.matches('.addtab')) {
+		panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
+		(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
+	}
+	[...b.querySelectorAll('.tab')].forEach(t => t.nextSibling.hidden = !t.querySelector(':checked'));
+}));
 let actions = {};
 let cache = {};
 function display(output, attr, data = []) {
@@ -138,7 +137,6 @@ function display(output, attr, data = []) {
 	const adjusted = Object.values(actions).reduce((h, f) => f(h, {attr}), lines);
 	init(output, adjusted.map(line => create('div', {innerHTML: line})));
 }
-qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
 qS('#container').addEventListener('click', async ({target: button}) => {
 	if (!button.matches('button')) return;
 	qS('#output').dataset.loading++;
@@ -206,26 +204,21 @@ add_action(function shorten_std_names(data, e) {
 });
 add_action(function shorten_decl(data, e) {
 	return replace(data, /^.*$/g, (m) => {
-		try {
-			let re = /&lt;&lt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
-			for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
-				s += m.slice(lastindex, r.index);
-				if (r[1]) stack.push({...r, pos: s.length});
-				if (r[2]) {
-					while (r[0] !== '&gt;' && stack[stack.length - 1][1] !== {')': '(', ']': '['}[r[0]])
-						stack.pop();
-					if (r[0] !== '&gt;' || stack[stack.length - 1][1] === '&lt;') {
-						const l = stack.pop();
-						const [abbr, full] = [l[0]+'...', s.slice(l.pos)];
-						const tooltip = m.slice(l.index + l[0].length, r.index);
-						if (r.index - l.index - abbr.length > 30)
-							s = s.slice(0, l.pos) + make_toggle({abbr, full, tooltip});
-					}
+		let re = /&lt;&lt;|-&gt;|(\(|\[|&lt;)|(\)|\]|&gt;)|($)/g;
+		for (let s = '', r, lastindex, stack = []; r = re.exec(m); lastindex = r.index) {
+			s += m.slice(lastindex, r.index);
+			if (r[1]) stack.push({...r, pos: s.length + r[0].length});
+			if (r[2]) {
+				while (stack.length && r[0] !== '&gt;' && stack.at(-1)[1] !== {')': '(', ']': '['}[r[0]])
+					stack.pop();
+				if (stack.length && (r[0] !== '&gt;' || stack.at(-1)[1] === '&lt;')) {
+					const l = stack.pop();
+					const [full, tooltip] = [s.slice(l.pos), m.slice(l.index + l[0].length, r.index)];
+					if (r.index - l.index > 30)
+						s = s.slice(0, l.pos) + make_toggle({abbr: '...', full, tooltip});
 				}
-				if (r[3] === '') return s;
 			}
-		} catch (e) {
-			return m;
+			if (r[3] === '') return s;
 		}
 	});
 });
