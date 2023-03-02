@@ -13,7 +13,7 @@ button, label, summary{font-size: 18px}
 .tabs > .tab{border: 1px solid; border-radius: 5px 5px 0 0; display: grid; flex: auto; order: 1}
 .editlabel:not([hidden]) + label{display: none}
 .tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
-.tabpanel textarea{height: calc(100vh - 350px); margin: 1px}
+#code textarea{height: calc(100vh - 350px); margin: 1px}
 #expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
 .format{padding-top: 5px; position: absolute; right: 5px}
 #code textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
@@ -47,6 +47,7 @@ button, label, summary{font-size: 18px}
 <input class="input options">
 <select class="input compiler"><option value="gsnapshot"></select>
 <details class="filters" open><summary>options</summary>
+<label><input type=checkbox name="binaryObject" data-enableif="supportsBinaryObject">binaryObject</label>
 <label><input type=checkbox name="binary" data-enableif="supportsBinary">binary</label>
 <label><input type=checkbox name="execute" data-enableif="supportsExecute">execute</label>
 <label><input type=checkbox name="labels" checked>labels</label>
@@ -73,7 +74,7 @@ let request = (url, req = {}, type = 'application/json') =>
 let cacheGet = async (cache, i, url) => JSON.parse(cache[i] ??= await request(url).then(x => x.text()));
 let stored = (s) => JSON.parse(sessionStorage[s]) ?? [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
-	'/compilers?fields=id,name,lang,groupName,' +
+	'/compilers?fields=id,name,lang,groupName,supportsBinaryObject,' +
 	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView');
 let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
