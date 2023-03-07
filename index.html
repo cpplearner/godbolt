@@ -124,7 +124,7 @@ document.addEventListener('click', e => e.target.matches('.format') && format(e.
 document.addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
 qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
 qSA('.tabs').forEach(b => b.addEventListener('click', e => {
-	const panel = b.querySelector(':checked')?.closest('.tab')?.nextSibling ?? b.lastChild;
+	const panel = b.querySelector('.tab :checked')?.closest('.tab').nextSibling ?? b.lastChild;
 	if (e.target.matches('.addtab')) {
 		panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
 		(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
