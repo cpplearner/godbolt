@@ -4,7 +4,7 @@
 <title>Compiler Explorer Tool</title>
 <style>
 body{overflow: scroll}
-button, label, summary{font-size: 18px}
+button, label, summary{flex: none; font-size: 18px}
 .toggle{cursor: pointer}
 .toggle:not(.full) > .full, .toggle.full > .abbr{display: none}
 .tabs{display: flex; flex-flow: row wrap; margin: 0; padding: 0; width: 100%}
@@ -15,12 +15,11 @@ button, label, summary{font-size: 18px}
 .tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
 #code textarea{height: calc(100vh - 350px); margin: 1px}
 #expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
-.format{padding-top: 5px; position: absolute; right: 5px}
+.format{position: absolute; right: 1px; top: 3px}
 #code textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
 .input, .output{box-sizing: border-box; margin: 1px; padding: 1px; width: 100%}
 #container label{white-space: nowrap}
 #fromlink{display: flex; width: 100%}
-#fromlink > button{flex: none}
 #fromlink > input{flex: auto}
 #output:not([data-loading="0"])::before{content: 'loading...'; display: block}
 #stdout:not(:empty)::before, #stderr:not(:empty)::before{content: attr(id) ':'; font-size: x-small}
@@ -37,7 +36,7 @@ button, label, summary{font-size: 18px}
 <li id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button>
 <li class="addtab">+
 <li class="tab"><input class="editlabel" hidden><label><input type=radio name="code" checked><a></a></label>
-<li class="tabpanel"><div><div class="format"><button>format</button></div><textarea class="input"></textarea></div>
+<li class="tabpanel"><button class="format">format</button><textarea class="input"></textarea>
 </ul>
 <input id="goptions" class="input">
 <ul id="container" class="tabs">
