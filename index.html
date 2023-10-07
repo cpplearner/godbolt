@@ -4,7 +4,7 @@
 <title>Compiler Explorer Tool</title>
 <style>
 body{overflow: scroll}
-button, label, summary{flex: none; font-size: 18px}
+button, label, summary{font-size: 18px}
 .toggle{cursor: pointer}
 .toggle:not(.full) > .full, .toggle.full > .abbr{display: none}
 .tabs{display: flex; flex-flow: row wrap; margin: 0; padding: 0; width: 100%}
@@ -13,10 +13,10 @@ button, label, summary{flex: none; font-size: 18px}
 .tabs > .tab{border: 1px solid; border-radius: 5px 5px 0 0; display: grid; flex: auto; order: 1}
 .editlabel:not([hidden]) + label{display: none}
 .tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
-#code textarea{height: calc(100vh - 350px); margin: 1px}
+#source textarea{height: calc(100vh - 350px); margin: 1px}
 #expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
-.format{position: absolute; right: 1px; top: 3px}
-#code textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
+.format{opacity: 0.8; position: absolute; right: 1px; top: 3px}
+#source textarea, .output{font-family: monospace; white-space: pre-wrap; word-break: break-all}
 .input, .output{box-sizing: border-box; margin: 1px; padding: 1px; width: 100%}
 #container label{white-space: nowrap}
 #fromlink{display: flex; width: 100%}
@@ -32,10 +32,10 @@ button, label, summary{flex: none; font-size: 18px}
 .output .cyan{color: darkcyan}
 .output .bold.green:only-child{font-weight: normal}
 </style>
-<ul id="code" class="tabs">
+<ul id="source" class="tabs">
 <li id="expand" class="toggle"><button class="abbr">v</button><button class="full">^</button>
 <li class="addtab">+
-<li class="tab"><input class="editlabel" hidden><label><input type=radio name="code" checked><a></a></label>
+<li class="tab"><input class="editlabel" hidden><label><input type=radio name="source" checked><a></a></label>
 <li class="tabpanel"><button class="format">format</button><textarea class="input"></textarea>
 </ul>
 <input id="goptions" class="input">
@@ -65,7 +65,7 @@ button, label, summary{flex: none; font-size: 18px}
 <button name="output">output</button>
 <button name="ast" data-enableif="supportsAstView">ast</button>
 </ul>
-<div id="fromlink"><input value="https://godbolt.org/z/oc46MhKje"><button>fill</button></div>
+<div id="fromlink"><input value="https://godbolt.org/z/qoE4Gqqfn"><button>fill</button></div>
 <p id="output" class="output" data-loading="1"><p id="stdout" class="output"><p id="stderr" class="output"></p>
 <script>
 let request = (url, req = {}, type = 'application/json') =>
@@ -75,10 +75,10 @@ let stored = (s) => JSON.parse(sessionStorage[s]) ?? [];
 let getCompilers = (use_cache = sessionStorage) => cacheGet(use_cache, 'compilers',
 	'/compilers?fields=id,name,lang,groupName,supportsBinaryObject,' +
 	'supportsBinary,supportsExecute,supportsLibraryCodeFilter,supportsIntel,supportsDemangle,supportsAstView');
-let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, 'preload', '/shortlinkinfo/'+s);
+let getInfo = (s, use_cache = localStorage) => cacheGet(use_cache, `preload-${s}`, '/shortlinkinfo/'+s);
 let compile = (id, body) => request('/compiler/'+id+'/compile', {method: 'post', body}).then(x => x.json());
-let format = (code, body = JSON.stringify({base: 'LLVM', source: code.value})) =>
-	request('/format/clangformat', {method: 'post', body}).then(x => x.json()).then(x => code.value = x.answer);
+let format = (source, body = JSON.stringify({base: 'LLVM', source: source.value})) =>
+	request('/format/clangformat', {method: 'post', body}).then(x => x.json()).then(x => source.value = x.answer);
 let qS = (selector) => document.querySelector(selector);
 let qSA = (selector) => [...document.querySelectorAll(selector)];
 let create = (tag, props) => Object.assign(document.createElement(tag), props);
@@ -100,7 +100,7 @@ function reinitpanel(s, p = s.closest('.tabpanel'), c = stored('compilers').find
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
 function loadstate({sessions: [s]}, startup, t = qS('#container')) {
-	if (!startup) qS('#code textarea').value = s.source;
+	if (!startup) qS('#source textarea').value = s.source;
 	init(t, [t.querySelector('.addtab'), ...[...s.compilers, ...s.executors.map(x => x.compiler)].flatMap(c => {
 		const panel = t.querySelector('.tabpanel').cloneNode(true);
 		[panel.querySelector('.options').value, panel.querySelector('.compiler').value] = [c.options, c.id];
@@ -142,9 +142,9 @@ qS('#container').addEventListener('click', async ({target: button}) => {
 	qS('#output').dataset.loading++;
 	try {
 		const p = button.closest('.tabpanel');
-		const source = qS('#code textarea').value;
+		const source = qS('#source textarea').value;
 		const filenames = qSA('#filenames .text').slice(1).map(a => a.text);
-		const files = filenames.map((filename, i) => ({filename, contents: qSA('#code textarea')[i+1].value}));
+		const files = filenames.map((filename, i) => ({filename, contents: qSA('#source textarea')[i+1].value}));
 		const compiler = p.querySelector('.compiler').value;
 		const userArguments = qS('#goptions').value+' '+p.querySelector('.options').value;
 		const compilerOptions = {produceAst: button.name === 'ast', executorRequest: files.length, skipPopArgs: true};
@@ -177,7 +177,7 @@ let replace = (h, re, cb) => h.map(s => s.replace(/(?<=^|>)(.+?)(?=<|$)/g, (m, p
 add_action(function strip_ast_output(data, e) {
 	if (e.attr !== 'ast') return data;
 	const t = data.map((s, i) => [s, i]).filter(a => a[0].match(/^\x1B\[0;34m[`|]-/)).reverse();
-	t.forEach((a, i) => a[0].match(/ &lt;\x1B\[0;33m\x1B\[0m&gt; .* imp/) && data.splice(a[1], t[i-1][1] - a[1]));
+	t.forEach((a, i) => a[0].match(/\x1B\[0m implicit\b/) && data.splice(a[1], t[i-1][1] - a[1]));
 	return replace(data, /\x1B\[0;33m 0x[a-f0-9]+/g, '');
 });
 add_action(function colorize(data, e) {
@@ -191,16 +191,8 @@ add_action(function hyperlink(data, e) {
 	return replace(data, /\x1B\]8;;(.*?)\x07(.*?)\x1B]8;;\x07/g, (m, p1, p2) => `<a href="${p1}">${p2}</a>`);
 });
 add_action(function shorten_filename(data, e) {
-	const f = [
-		'/opt/compiler-explorer/(?:libs/(?:\\S*?/include/(?=[^\\s/]*?/))?|\\S*?/include/c\\+\\+/[^\\s/]*?/)',
-		'/tmp/compiler-explorer-compiler\\S*?/',
-	];
-	return replace(data, RegExp(f.join('|'), 'g'), m => make_toggle({abbr: '.../', full: m, tooltip: m}));
-});
-add_action(function shorten_std_names(data, e) {
-	const rstring = '\\bstd::basic_string&lt;(char)(, ?std::char_traits&lt;\\1&gt;, ?std::allocator&lt;\\1&gt; )?&gt;'
-		+ '( (?=&gt;))?';
-	return replace(replace(data, /\bstd::__\w+::/g, 'std::'), RegExp(rstring, 'g'), 'std::string');
+	const f = RegExp('/opt/compiler-explorer/\\S*?/include/c\\+\\+/[^\\s/]*?/', 'g');
+	return replace(data, f, m => make_toggle({abbr: '.../', full: m, tooltip: m}));
 });
 add_action(function shorten_decl(data, e) {
 	return replace(data, /^.*$/g, (m) => {
