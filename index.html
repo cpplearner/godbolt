@@ -11,8 +11,8 @@ button, label, summary{font-size: 18px}
 #expand{display: block; flex: none; order: 3; width: 25px}
 .tabs > .addtab{display: block; flex: none; font-weight: bold; order: 2; padding: 0 15px}
 .tabs > .tab{border: 1px solid; border-radius: 5px 5px 0 0; display: grid; flex: auto; order: 1}
-.editlabel:not([hidden]) + label{display: none}
-.tabs > .tabpanel:not([hidden]){display: block; flex: none; width: 100%; order: 4; position: relative}
+.editlabel:not([hidden]) + label, .tab:not(:has(:checked)) + .tabpanel{display: none}
+.tabpanel{flex: none; width: 100%; order: 4; position: relative}
 #source textarea{height: calc(100vh - 350px); margin: 1px}
 #expand.full ~ .tabpanel textarea{height: calc(100vh - 80px)}
 .format{opacity: 0.8; position: absolute; right: 1px; top: 3px}
@@ -41,7 +41,7 @@ button, label, summary{font-size: 18px}
 <input id="goptions" class="input">
 <ul id="container" class="tabs">
 <li class="addtab">+
-<li class="tab"><input class="editlabel" hidden><label><input type=radio name="container" checked><a></a></label>
+<li class="tab"><input class="editlabel" hidden><label><input type=radio name="container"><a></a></label>
 <li class="tabpanel">
 <input class="input options">
 <select class="input compiler"><option value="gsnapshot"></select>
@@ -95,7 +95,7 @@ function clonelabeledtab(old, node = old.cloneNode(true), edit = node.querySelec
 	});
 	return node;
 }
-function reinitpanel(s, p = s.closest('.tabpanel'), c = stored('compilers').find(x => x.id === s.value)) {
+function setuppanel(s, p = s.closest('.tabpanel'), c = stored('compilers').find(x => x.id === s.value)) {
 	p.previousSibling.querySelector('label a').text = c?.groupName ?? '';
 	[...p.querySelectorAll('[data-enableif]')].forEach(x => x.disabled = !c?.[x.dataset.enableif]);
 }
@@ -107,8 +107,8 @@ function loadstate({sessions: [s]}, startup, t = qS('#container')) {
 		[...panel.querySelectorAll('input[type=checkbox]')].forEach(e => e.checked = c.filters[e.name]);
 		return [clonelabeledtab(t.querySelector('.tab')), panel];
 	})]);
-	qSA('.tabpanel .compiler').forEach(c => reinitpanel(c));
-	[...t.querySelectorAll('.tabpanel')].forEach(p => p.hidden = p !== t.lastChild);
+	qSA('.tabpanel .compiler').forEach(c => setuppanel(c));
+	t.querySelector('.tab input[type=radio]').checked = true;
 }
 let shortlink = () => qS('#fromlink > input').value.match(/\/z\/([-\w]+)/)[1];
 Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => {
@@ -120,15 +120,12 @@ Promise.all([getInfo(shortlink()), getCompilers()]).then(([info, compilers]) => 
 }).finally(() => qS('#output').dataset.loading--);
 document.addEventListener('click', e => e.target.closest('.toggle')?.classList.toggle('full'));
 document.addEventListener('click', e => e.target.matches('.format') && format(e.target.nextSibling));
-document.addEventListener('input', e => e.target.matches('.compiler') && reinitpanel(e.target));
+document.addEventListener('input', e => e.target.matches('.compiler') && setuppanel(e.target));
 qS('#fromlink > button').addEventListener('click', () => getInfo(shortlink(), false).then(loadstate));
-qSA('.tabs').forEach(b => b.addEventListener('click', e => {
-	const panel = b.querySelector('.tab :checked')?.closest('.tab').nextSibling ?? b.lastChild;
-	if (e.target.matches('.addtab')) {
-		panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
-		(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
-	}
-	[...b.querySelectorAll('.tab')].forEach(t => t.nextSibling.hidden = !t.querySelector(':checked'));
+qSA('.addtab').forEach(b => b.addEventListener('click', e => {
+	const panel = e.target.closest('.tabs').querySelector('.tab:has(:checked) + .tabpanel, :scope > :last-child');
+	panel.after(clonelabeledtab(panel.previousSibling), panel.cloneNode(true));
+	(panel.nextSibling.nextSibling.querySelector('select') ?? {}).value = panel.querySelector('select')?.value;
 }));
 let actions = {};
 let cache = {};
