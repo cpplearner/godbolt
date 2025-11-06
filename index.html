@@ -188,7 +188,7 @@ add_action(function hyperlink(data, e) {
 	return replace(data, /\x1B\]8;;(.*?)\x07(.*?)\x1B]8;;\x07/g, (m, p1, p2) => `<a href="${p1}">${p2}</a>`);
 });
 add_action(function shorten_filename(data, e) {
-	const f = RegExp('/opt/compiler-explorer/\\S*?/include/c\\+\\+/[^\\s/]*?/', 'g');
+	const f = RegExp('/cefs/[0-9a-f]{2}/\\S*?/include/c\\+\\+/[^\\s/]*?/', 'g');
 	return replace(data, f, m => make_toggle({abbr: '.../', full: m, tooltip: m}));
 });
 add_action(function shorten_decl(data, e) {
